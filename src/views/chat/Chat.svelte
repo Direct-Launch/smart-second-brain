@@ -2,6 +2,7 @@
 import { QueryClientProvider } from "@tanstack/svelte-query";
 import Input from "../../components/chat/Input.svelte";
 import MessageContainer from "../../components/chat/MessageContainer.svelte";
+import { SessionSheetModal } from "../../components/chat/session-sidebar/SessionSheetModal";
 import SessionSidebar from "../../components/chat/session-sidebar/SessionSidebar.svelte";
 import { sessionResizer } from "../../components/chat/session-sidebar/resize";
 import { getSessionRegistry } from "../../stores/chatStore.svelte";
@@ -358,6 +359,20 @@ function portalComposer(node: HTMLElement) {
       ondrop={handleRootDrop}
       use:portalComposer
     >
+      {#if !wide && data.enableSessionSidebar}
+        <div class="s2b-session-sheet-trigger-bar">
+          <button
+            type="button"
+            class="clickable-icon s2b-session-sheet-trigger"
+            aria-label="Open sessions"
+            onclick={() => new SessionSheetModal(plugin.app, threadPath).open()}
+          >
+            <div class="w-icon-xs h-icon-xs" use:icon={"panel-left-open"} style="--icon-size: var(--icon-xs)"></div>
+            <span>Sessions</span>
+          </button>
+        </div>
+      {/if}
+
       {#if registry}
         <MessageContainer bind:this={messageContainer} {registry} {threadPath} />
         <Input
@@ -503,6 +518,32 @@ function portalComposer(node: HTMLElement) {
 
   .chat-root {
     --chat-bg: var(--background-primary);
+  }
+
+  /* Compact mobile-only entry point to the session list (SessionSheetModal),
+     only mounted when the in-leaf sidebar is hidden (`!wide`) — see the
+     `{#if}` gate in the template, which also keeps this from ever
+     double-upping with `SessionSidebar` as the entry point. A slim flow
+     element at the top of `.chat-root`'s flex column, so it takes up real
+     height and `MessageContainer` (flex-1) scrolls below it rather than
+     under it. */
+  .s2b-session-sheet-trigger-bar {
+    flex: 0 0 auto;
+    display: flex;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--chat-bg);
+    position: relative;
+    z-index: 26;
+  }
+
+  .s2b-session-sheet-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
   }
 
   /* The composer sizes itself against the chat pane's height (see
