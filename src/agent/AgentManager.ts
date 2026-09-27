@@ -116,6 +116,7 @@ import {
 
 import { getRegistry } from "../providers/registry";
 import { ensureProviderRegistered } from "../providers/registrySync";
+import { DEFAULT_CHAT_TITLE, FAILED_CHAT_TITLE } from "../utils/chatTitle";
 
 import type { StructuredToolInterface } from "@langchain/core/tools";
 
@@ -1860,6 +1861,20 @@ export class AgentManager {
 		return this.chatManager.renameChatFile(this.normalizeThreadId(threadId), title);
 	}
 
+	/**
+	 * Rename a thread whose turn failed to "New Chat (failed)", freeing the "New Chat"
+	 * placeholder. Only once the thread has checkpoints: a run that failed before
+	 * checkpointing anything (e.g. no chat model configured) left the chat empty, and
+	 * an empty "New Chat" is reused by the next new chat, so renaming it would only
+	 * strand an empty file. Returns the new vault path, or `undefined` if not renamed.
+	 */
+	async markThreadFailed(threadId: string): Promise<string | undefined> {
+		const normalized = this.normalizeThreadId(threadId);
+		const data = await this.chatManager.ensureThreadLoaded(normalized);
+		if (!data || Object.keys(data.checkpoints).length === 0) return undefined;
+		return this.chatManager.renameChatFile(normalized, FAILED_CHAT_TITLE);
+	}
+
 	async setLastViewedCheckpoint(threadId: string, checkpointId: string): Promise<void> {
 		await this.patchThreadMetadata(threadId, (metadata) =>
 			metadata.lastViewedCheckpointId === checkpointId
@@ -2169,7 +2184,7 @@ export class AgentManager {
 			await this.plugin.app.vault.createFolder(folder);
 		}
 
-		const { path } = await this.chatManager.getUniqueTitlePath(folder, "New Chat", "");
+		const { path } = await this.chatManager.getUniqueTitlePath(folder, DEFAULT_CHAT_TITLE, "");
 
 		const initialData = {
 			threadId: path,

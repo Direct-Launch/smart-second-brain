@@ -19,6 +19,7 @@ import { Logger } from "../utils/logging";
 import { shouldSummarizeForEstimatedTokens } from "../agent/summarization";
 import { estimateConversationBaseTokens, estimateLiveDraftTokens } from "../utils/tokenEstimator";
 import { extractErrorMessage } from "../utils/errorMessage";
+import { isDefaultChatTitle, needsChatTitle } from "../utils/chatTitle";
 import {
 	MANUAL_SUMMARIZATION_PROMPT,
 	MessageState,
@@ -598,7 +599,6 @@ export class ChatSession {
 		pairId: UUIDv7,
 		getStream: (signal: AbortSignal) => AsyncIterable<AgentStreamChunk>,
 		options: {
-			generateTitle?: string;
 			reloadAfter?: boolean;
 			parentCheckpointId?: string;
 			beforeCheckpointIds: Set<string>;
@@ -663,21 +663,24 @@ export class ChatSession {
 			const thinkingDurationMs = Date.now() - runStartedAtMs;
 			pair.assistantMessage.thinkingDurationMs = thinkingDurationMs;
 
-			// Generate chat title after stream completes for the first user message.
-			// Must be sequential because rename changes this.id (the thread path).
-			if (options.generateTitle && this.messages.length === 1) {
+			// Title the chat after the first turn that succeeds, not just after the first
+			// submit: a first turn that errored leaves the placeholder name, and the retry,
+			// regenerate or edit that eventually succeeds must still title it. Otherwise the
+			// file stays "New Chat", no longer counts as empty, and every later new chat is
+			// deduped to "New Chat (2)", "(3)", ... This includes a chat a failed turn moved
+			// to "New Chat (failed)". Titled from the conversation's opening message — the
+			// first pair with user text, since a summarized history leads with an empty
+			// marker pair. Must be sequential because rename changes this.id.
+			const titleSource = this.messages.find((p) => p.userMessage.content.trim())?.userMessage.content;
+			if (titleSource && needsChatTitle(String(this.id))) {
 				try {
 					const plugin = getPlugin();
 					const newPath = await plugin.agentManager.generateThreadTitleFromUserMessage(
 						String(this.id),
 						this.selectedAgentId,
-						options.generateTitle,
+						titleSource,
 					);
-					if (newPath) {
-						const oldPath = String(this.id);
-						this.id = newPath;
-						this.onThreadIdChange?.(oldPath, newPath);
-					}
+					this.adoptThreadPath(newPath);
 				} catch (err) {
 					Logger.warn("[ChatSession] Failed to generate chat title:", err);
 				}
@@ -743,6 +746,7 @@ export class ChatSession {
 				pair.assistantMessage.state = AssistantState.error;
 				pair.assistantMessage.errorCode = extractErrorMessage(_err);
 				Logger.error("[ChatSession] Run failed:", _err);
+				await this.markPlaceholderFailed();
 			}
 		} finally {
 			// Drop the live anchor on every exit path — success, cancel and error
@@ -759,6 +763,33 @@ export class ChatSession {
 			this.summarizingHistory = false;
 			this.messageState = MessageState.idle;
 			this.touch();
+		}
+	}
+
+	/** Follow a rename of this thread's file (auto-title or failed-marker). */
+	private adoptThreadPath(newPath: string | undefined): void {
+		if (!newPath || newPath === String(this.id)) return;
+		const oldPath = String(this.id);
+		this.id = newPath;
+		this.onThreadIdChange?.(oldPath, newPath);
+	}
+
+	/**
+	 * Move a still-"New Chat" thread whose turn failed to "New Chat (failed)". A run
+	 * that failed after checkpointing the user message leaves a chat that no longer
+	 * counts as empty and can't be reused; left on the placeholder name, it would push
+	 * every later new chat to "New Chat (2)", "(3)", ... (`markThreadFailed` skips a
+	 * chat the run never checkpointed, which stays reusable.) A later successful turn
+	 * still titles it (see `needsChatTitle`). Best-effort: a failed rename only costs
+	 * the numbering, so it must never mask the run's own error.
+	 */
+	private async markPlaceholderFailed(): Promise<void> {
+		if (!isDefaultChatTitle(String(this.id))) return;
+		try {
+			const newPath = await getPlugin().agentManager.markThreadFailed(String(this.id));
+			this.adoptThreadPath(newPath);
+		} catch (err) {
+			Logger.warn("[ChatSession] Failed to mark chat as failed:", err);
 		}
 	}
 
@@ -873,7 +904,6 @@ export class ChatSession {
 					reviewStatus,
 				) as AsyncIterable<AgentStreamChunk>,
 			{
-				generateTitle: userContent,
 				reloadAfter: true,
 				parentCheckpointId,
 				beforeCheckpointIds,
