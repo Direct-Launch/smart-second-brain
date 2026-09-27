@@ -557,6 +557,12 @@ export interface PluginData {
 	onboardingComplete: boolean;
 	/** Whether the onboarding splash intro animation has already played (so it plays only once). */
 	onboardingSplashSeen: boolean;
+	/** Once a day, fetch the plugin's manifest from GitHub and announce a newer version. */
+	checkForUpdates: boolean;
+	/** When the update check last ran (ms since epoch), successful or not. */
+	lastUpdateCheckAt: number | null;
+	/** Newest version already announced by the update check, so each is announced once. */
+	lastNotifiedUpdateVersion: string | null;
 	/**
 	 * Last stable plugin version whose release notes were announced (or that was
 	 * installed fresh). Null for data written before release notes existed.

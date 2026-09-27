@@ -232,6 +232,9 @@ export const DEFAULT_SETTINGS: PluginData = {
 	lastActiveChatId: null,
 	onboardingComplete: false,
 	onboardingSplashSeen: false,
+	checkForUpdates: true,
+	lastUpdateCheckAt: null,
+	lastNotifiedUpdateVersion: null,
 	lastSeenVersion: null,
 	dismissedRecommendations: [],
 	thinkingProcessExpanded: true,
@@ -1233,6 +1236,30 @@ export class PluginDataStore {
 	}
 	set onboardingSplashSeen(val: boolean) {
 		this.#data.onboardingSplashSeen = val;
+		void this.saveSettings();
+	}
+
+	get checkForUpdates() {
+		return this.#data.checkForUpdates ?? true;
+	}
+	set checkForUpdates(val: boolean) {
+		this.#data.checkForUpdates = val;
+		void this.saveSettings();
+	}
+
+	get lastUpdateCheckAt() {
+		return this.#data.lastUpdateCheckAt ?? null;
+	}
+	set lastUpdateCheckAt(val: number | null) {
+		this.#data.lastUpdateCheckAt = val;
+		void this.saveSettings();
+	}
+
+	get lastNotifiedUpdateVersion() {
+		return this.#data.lastNotifiedUpdateVersion ?? null;
+	}
+	set lastNotifiedUpdateVersion(val: string | null) {
+		this.#data.lastNotifiedUpdateVersion = val;
 		void this.saveSettings();
 	}
 

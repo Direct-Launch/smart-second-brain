@@ -1,4 +1,15 @@
-import { type EventRef, MarkdownView, Menu, Notice, Plugin, TFile, WorkspaceLeaf, debounce } from "obsidian";
+import {
+	type EventRef,
+	MarkdownView,
+	Menu,
+	Notice,
+	Plugin,
+	TFile,
+	WorkspaceLeaf,
+	apiVersion,
+	debounce,
+	requestUrl,
+} from "obsidian";
 import { mount, unmount } from "svelte";
 import "./lib/i18n";
 import "./lib/langgraphContext";
@@ -9,6 +20,7 @@ import { memoriesDir } from "./utils/agentPaths";
 import { resetAvailableModels, useAvailableModels } from "./hooks/useAvailableModels.svelte";
 import { isMobileUI } from "./utils/platform";
 import { planUpdateAnnouncement } from "./utils/releaseNotes";
+import { COMMUNITY_PLUGIN_URL, UPDATE_MANIFEST_URL, runUpdateCheck } from "./utils/updateCheck";
 import { StartupProfiler } from "./utils/startupProfiler";
 import { persistStartupRecord, recordStartupEnvironment } from "./utils/startupTimingsStore";
 import "./styles.css";
@@ -84,6 +96,8 @@ export default class SecondBrainPlugin extends Plugin {
 	/** `performance.now()` when `onload` finished; -1 until then. Used to attribute the
 	 *  Obsidian pre-layout gap (onload:end → onLayoutReady). */
 	private onloadEndAt = -1;
+	/** Set in onunload, so async work that outlives the plugin (the update check) stays quiet. */
+	private unloaded = false;
 	/** Mounted status-bar running-agent indicator (unmounted on plugin unload). */
 	private runningIndicator: ReturnType<typeof mount> | null = null;
 
@@ -689,6 +703,13 @@ export default class SecondBrainPlugin extends Plugin {
 
 			this.announceUpdate();
 
+			// Update check: a while after startup so it never competes with init, then
+			// hourly re-evaluation for sessions left open for days. Each run only
+			// fetches once the daily interval has passed.
+			const startUpdateCheck = window.setTimeout(() => void this.checkForUpdate(), 30_000);
+			this.register(() => window.clearTimeout(startUpdateCheck));
+			this.registerInterval(window.setInterval(() => void this.checkForUpdate(), 60 * 60 * 1000));
+
 			// Agents whose customized prompt/guidance couldn't be auto-updated after a
 			// default changed are surfaced in the new-chat recommendations view
 			// (ChatRecommendations.svelte reads pluginData.staleGuidance), so no startup
@@ -895,6 +916,7 @@ export default class SecondBrainPlugin extends Plugin {
 	}
 
 	onunload() {
+		this.unloaded = true;
 		Log.info("Unloading plugin");
 		// The model store's module state survives a disable/enable cycle. Without this
 		// reset, its QueryObservers keep fetching with the unloaded plugin's credentials
@@ -1007,6 +1029,77 @@ export default class SecondBrainPlugin extends Plugin {
 	//
 	// 	workspace.revealLeaf(leaf);
 	// }
+
+	/**
+	 * Fetch the plugin's manifest from GitHub (at most daily, unless disabled in
+	 * settings) and show a notice once per newer version Obsidian would install.
+	 * Failures are silent: offline is normal, and the next run retries.
+	 *
+	 * Steps aside entirely while Obsidian's own "Automatically check for plugin
+	 * updates" (Community plugins, off by default) is on: that already announces
+	 * updates, and a second notice would just be noise.
+	 */
+	private async checkForUpdate() {
+		const data = this.pluginData;
+		await runUpdateCheck({
+			isEnabled: () => data.checkForUpdates,
+			obsidianChecksUpdates: () => this.obsidianChecksPluginUpdates(),
+			isActive: () => !this.unloaded,
+			now: () => Date.now(),
+			currentVersion: this.manifest.version,
+			appVersion: apiVersion,
+			getLastCheckAt: () => data.lastUpdateCheckAt,
+			setLastCheckAt: (at) => {
+				data.lastUpdateCheckAt = at;
+			},
+			getLastNotified: () => data.lastNotifiedUpdateVersion,
+			setLastNotified: (version) => {
+				data.lastNotifiedUpdateVersion = version;
+			},
+			fetchManifest: async () => {
+				const response = await requestUrl({ url: UPDATE_MANIFEST_URL, throw: false });
+				return response.status === 200 ? response.json : null;
+			},
+			notify: (version) => {
+				const message = createFragment((frag) => {
+					frag.appendText(`Smart Second Brain ${version} is available. `);
+					const link = frag.createEl("a", { text: "Update", href: "#" });
+					link.addEventListener("click", (event) => {
+						event.preventDefault();
+						this.openCommunityPluginSettings();
+					});
+				});
+				new Notice(message, 15_000);
+			},
+		});
+	}
+
+	/** Obsidian's own periodic plugin-update check (internal API; false if it ever moves). */
+	private obsidianChecksPluginUpdates(): boolean {
+		const plugins = (this.app as typeof this.app & { plugins?: { autoCheckForUpdates?: unknown } }).plugins;
+		return plugins?.autoCheckForUpdates === true;
+	}
+
+	/**
+	 * Settings → Community plugins, where "Check for updates" and the per-plugin
+	 * Update button live. app.setting is undocumented internal API, so every hop is
+	 * optional; if its shape changes, fall back to the `obsidian://show-plugin` URI.
+	 */
+	private openCommunityPluginSettings() {
+		const setting = (
+			this.app as typeof this.app & { setting?: { open?: () => void; openTabById?: (id: string) => unknown } }
+		).setting;
+		try {
+			if (setting?.open && setting.openTabById) {
+				setting.open();
+				setting.openTabById("community-plugins");
+				return;
+			}
+		} catch (error) {
+			Log.debug("[UpdateCheck] Could not open Community plugins settings:", error);
+		}
+		window.open(COMMUNITY_PLUGIN_URL);
+	}
 
 	/**
 	 * Open (or focus) the "What's new" tab with the `expanded` newest releases open:
