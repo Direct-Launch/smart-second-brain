@@ -1,4 +1,5 @@
 <script lang="ts">
+import { Menu } from "obsidian";
 import { icon } from "../../../utils/utils";
 import type { SessionRow } from "../../../stores/session-sidebar/logic";
 
@@ -17,6 +18,37 @@ const { row, active, running, archivedView, onOpen, onRename, onDelete, onToggle
 	$props();
 
 const dateStr = $derived(new Date(row.updatedAt).toLocaleDateString());
+
+/**
+ * Touch fallback for the hover-only action buttons (see the `@media (hover:
+ * none)` split below). Mirrors the same row actions in an Obsidian Menu.
+ */
+function openOverflowMenu(event: MouseEvent) {
+	event.stopPropagation();
+	const menu = new Menu();
+
+	menu.addItem((item) => item.setTitle("Open").setIcon("panel-right-open").onClick(onOpen));
+
+	if (archivedView) {
+		menu.addItem((item) => item.setTitle("Restore").setIcon("undo-2").onClick(onToggleArchive));
+	} else {
+		menu.addItem((item) =>
+			item
+				.setTitle(row.pinned ? "Unpin" : "Pin")
+				.setIcon(row.pinned ? "pin-off" : "pin")
+				.onClick(onTogglePin),
+		);
+		menu.addItem((item) => {
+			item.setTitle("Archive").setIcon("archive").onClick(onToggleArchive);
+			if (running) item.setDisabled(true);
+		});
+		menu.addItem((item) => item.setTitle("Rename").setIcon("pencil").onClick(onRename));
+	}
+
+	menu.addItem((item) => item.setTitle("Delete").setIcon("trash-2").setWarning(true).onClick(onDelete));
+
+	menu.showAtMouseEvent(event);
+}
 </script>
 
 <div class="s2b-session-item" class:s2b-session-item-active={active} class:s2b-session-item-running={running}>
@@ -58,6 +90,14 @@ const dateStr = $derived(new Date(row.updatedAt).toLocaleDateString());
 			<span use:icon={"trash-2"}></span>
 		</button>
 	</div>
+	<button
+		class="s2b-session-overflow"
+		aria-label="Session actions"
+		onclick={openOverflowMenu}
+		type="button"
+	>
+		<span use:icon={"ellipsis"}></span>
+	</button>
 </div>
 
 <style>
@@ -128,9 +168,45 @@ const dateStr = $derived(new Date(row.updatedAt).toLocaleDateString());
 		gap: var(--size-2-1);
 	}
 
-	.s2b-session-item:hover .s2b-session-item-actions,
-	.s2b-session-item:focus-within .s2b-session-item-actions {
-		display: flex;
+	@media (hover: hover) {
+		.s2b-session-item:hover .s2b-session-item-actions,
+		.s2b-session-item:focus-within .s2b-session-item-actions {
+			display: flex;
+		}
+	}
+
+	@media (hover: none) {
+		.s2b-session-item-actions {
+			display: none !important;
+		}
+	}
+
+	.s2b-session-overflow {
+		display: none;
+		flex: 0 0 auto;
+		align-items: center;
+		justify-content: center;
+		width: var(--size-4-6);
+		height: var(--size-4-6);
+		padding: 0;
+		background: transparent;
+		border: none;
+		box-shadow: none;
+		border-radius: var(--radius-s);
+		color: var(--text-muted);
+		cursor: pointer;
+	}
+
+	@media (hover: none) {
+		.s2b-session-overflow {
+			display: inline-flex;
+		}
+	}
+
+	@media (hover: hover) {
+		.s2b-session-overflow {
+			display: none;
+		}
 	}
 
 	.s2b-session-action {
