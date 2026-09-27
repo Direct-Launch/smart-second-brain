@@ -1631,16 +1631,6 @@ body.is-mobile .tool-output-content pre .clickable-icon {
 .modal .s2b-modal-sheet-header-button {
 	translate: 0 var(--safe-area-inset-top, 0px);
 }
-/* Session sheet (SessionSheetModal): on mobile widths, fill the viewport so the
-   session list reads like a native full-screen sheet rather than a small
-   floating card; `SvelteModal`'s `contentFill` already gives the list's own
-   sections their scrollable body. */
-.is-mobile .modal.s2b-session-sheet {
-	width: 100vw;
-	height: 100dvh;
-	max-width: 100vw;
-	max-height: 100dvh;
-}
 /* Search modal glow: the gradient overlay replaces the modal's own border. */
 /* SuggestModal's element carries `.prompt`, not `.modal`; naming it beats core's
    `.prompt` border and the `.is-mobile .prompt` variant on specificity. */

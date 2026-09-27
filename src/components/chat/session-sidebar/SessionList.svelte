@@ -7,13 +7,15 @@ import { filterRows, partition, sortRows } from "../../../stores/session-sidebar
 import { icon } from "../../../utils/utils";
 import { confirmDelete } from "../../modal/ConfirmModal";
 import { promptText } from "../../modal/PromptModal";
+import type { ThreadPathStore } from "../../../views/chat/threadPathStore.svelte";
 import SessionSidebarItem from "./SessionSidebarItem.svelte";
 
 interface Props {
-	threadPath: string | null;
+	threadPathStore: ThreadPathStore;
 	onOpenSession?: () => void;
 }
-const { threadPath, onOpenSession }: Props = $props();
+const { threadPathStore, onOpenSession }: Props = $props();
+const threadPath = $derived(threadPathStore.current);
 
 const plugin = getPlugin();
 const store = getSessionSidebarStore();

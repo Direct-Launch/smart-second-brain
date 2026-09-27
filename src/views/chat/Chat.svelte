@@ -330,7 +330,7 @@ function portalComposer(node: HTMLElement) {
     use:observeWidth
   >
     {#if wide}
-      <SessionSidebar {threadPath} />
+      <SessionSidebar {threadPathStore} />
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <!-- role="separator" is correct per WAI-ARIA for a resizable-widget divider,
            and the widget IS interactive (drag + arrow-key resize) even though
@@ -365,7 +365,7 @@ function portalComposer(node: HTMLElement) {
             type="button"
             class="clickable-icon s2b-session-sheet-trigger"
             aria-label="Open sessions"
-            onclick={() => new SessionSheetModal(plugin.app, threadPath).open()}
+            onclick={() => new SessionSheetModal(plugin.app, threadPathStore).open()}
           >
             <div class="w-icon-xs h-icon-xs" use:icon={"panel-left-open"} style="--icon-size: var(--icon-xs)"></div>
             <span>Sessions</span>

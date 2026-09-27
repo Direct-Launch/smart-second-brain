@@ -1,14 +1,15 @@
 <script lang="ts">
+import type { ThreadPathStore } from "../../../views/chat/threadPathStore.svelte";
 import SessionList from "./SessionList.svelte";
 
 interface Props {
-	threadPath: string | null;
+	threadPathStore: ThreadPathStore;
 }
-const { threadPath }: Props = $props();
+const { threadPathStore }: Props = $props();
 </script>
 
 <div class="s2b-session-sidebar">
-	<SessionList {threadPath} />
+	<SessionList {threadPathStore} />
 </div>
 
 <style>

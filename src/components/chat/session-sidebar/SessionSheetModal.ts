@@ -1,4 +1,5 @@
 import type { App } from "obsidian";
+import type { ThreadPathStore } from "../../../views/chat/threadPathStore.svelte";
 import { SvelteModal } from "../../modal/SvelteModal";
 import SessionList from "./SessionList.svelte";
 
@@ -10,7 +11,7 @@ import SessionList from "./SessionList.svelte";
 export class SessionSheetModal extends SvelteModal {
 	constructor(
 		app: App,
-		private threadPath: string | null,
+		private threadPathStore: ThreadPathStore,
 	) {
 		super(app);
 	}
@@ -21,7 +22,7 @@ export class SessionSheetModal extends SvelteModal {
 
 		this.mountComponent(
 			SessionList,
-			{ threadPath: this.threadPath, onOpenSession: () => this.close() },
+			{ threadPathStore: this.threadPathStore, onOpenSession: () => this.close() },
 			{
 				fullScreenOnPhone: true,
 				width: "min(420px, 94vw)",
