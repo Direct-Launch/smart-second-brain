@@ -113,6 +113,7 @@ function portalComposer(node: HTMLElement) {
 	let leafObserver: MutationObserver | null = null;
 	let classObserver: MutationObserver | null = null;
 	let treeObserver: MutationObserver | null = null;
+	let keyboardObserver: MutationObserver | null = null;
 
 	// Horizontal placement and height come from wherever the leaf actually is
 	// (main view, sidebar split, …), so measure rather than assume full width.
@@ -211,6 +212,58 @@ function portalComposer(node: HTMLElement) {
 		publishGeometry();
 	};
 
+	// Slide the composer up with the keyboard instead of snapping. Obsidian
+	// flips `--keyboard-height` (inline on the root) in one step when the
+	// keyboard starts to open, which puts the composer at its final `top` at
+	// once while the keyboard is still rising. Core animates its own toolbar the
+	// same way this does: jump to the end position, offset back by the distance
+	// travelled, then transition the offset away. The curve approximates the iOS
+	// keyboard's (fast start, long settle) rather than core's slow-start one,
+	// which let the rising keyboard cover the composer for the first frames.
+	// Closing still snaps: the keyboard slides away beneath it, which already
+	// reads as native.
+	const KEYBOARD_SLIDE = "transform 300ms cubic-bezier(0.38, 0.7, 0.125, 1)";
+	const readKeyboardHeight = () =>
+		Number.parseFloat(document.documentElement.style.getPropertyValue("--keyboard-height")) || 0;
+	const watchKeyboard = (el: HTMLElement) => {
+		const rootStyle = getComputedStyle(document.documentElement);
+		const toolbarHeight = Number.parseFloat(rootStyle.getPropertyValue("--mobile-toolbar-height")) || 52;
+		const probe = document.createElement("div");
+		probe.style.cssText = "position:absolute;visibility:hidden;padding-bottom:env(safe-area-inset-bottom)";
+		document.body.appendChild(probe);
+		const safeBottom = Number.parseFloat(getComputedStyle(probe).paddingBottom) || 0;
+		probe.remove();
+		// The band below the composer, mirroring the `max()` in its `top` rule.
+		const band = (keyboard: number) => Math.max(keyboard + toolbarHeight, 52 + safeBottom);
+		const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+		let lastKeyboard = readKeyboardHeight();
+		keyboardObserver = new MutationObserver(() => {
+			const keyboard = readKeyboardHeight();
+			if (keyboard === lastKeyboard) return;
+			const rise = band(keyboard) - band(lastKeyboard);
+			lastKeyboard = keyboard;
+			if (rise <= 0 || reducedMotion.matches || el.style.display === "none") return;
+			el.style.transition = "none";
+			el.style.transform = `translateY(${rise}px)`;
+			// Commit the offset now, in the keyboard's own task, so the slide
+			// starts on the same frame the keyboard does.
+			void getComputedStyle(el).transform;
+			el.style.transition = KEYBOARD_SLIDE;
+			el.style.transform = "";
+			// Children's transitions (the input card's border colour changes on
+			// focus, mid-slide) bubble here too; only the composer's own transform
+			// ends the slide.
+			const finishSlide = (event: TransitionEvent) => {
+				if (event.target !== el || event.propertyName !== "transform") return;
+				el.style.transition = "";
+				el.removeEventListener("transitionend", finishSlide);
+			};
+			el.addEventListener("transitionend", finishSlide);
+		});
+		keyboardObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+	};
+
 	const portal = (found: HTMLElement) => {
 		composer = found;
 		home = found.parentElement;
@@ -249,6 +302,7 @@ function portalComposer(node: HTMLElement) {
 		}
 		classObserver = new MutationObserver(ensurePortaledClass);
 		classObserver.observe(found, { attributes: true, attributeFilter: ["class"] });
+		watchKeyboard(found);
 	};
 
 	// `<Input>` is rendered by a child component, so it may not exist yet when
@@ -275,8 +329,11 @@ function portalComposer(node: HTMLElement) {
 			leafObserver?.disconnect();
 			classObserver?.disconnect();
 			treeObserver?.disconnect();
+			keyboardObserver?.disconnect();
 			if (!composer) return;
 			composer.style.display = "";
+			composer.style.transform = "";
+			composer.style.transition = "";
 			composer.classList.remove("s2b-composer-portaled");
 			for (const prop of [
 				"--s2b-composer-left",

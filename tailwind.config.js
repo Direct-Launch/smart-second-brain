@@ -233,5 +233,15 @@ export default {
   corePlugins: {
     preflight: false,
   },
+  // Emit the `--tw-*` defaults only on elements that use a utility needing
+  // them, not on `*, ::before, ::after`. A custom property declared on an
+  // element gives it its own copy of every inherited custom property (~1300
+  // with Obsidian's theme), which WebKit rebuilds on every root variable
+  // change — Obsidian mobile sets `--keyboard-height` on the root, and in a
+  // long chat that froze the page for ~1.8s on an iPhone before the composer
+  // could follow the keyboard.
+  experimental: {
+    optimizeUniversalDefaults: true,
+  },
   plugins: [],
 };

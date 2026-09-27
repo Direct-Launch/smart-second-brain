@@ -193,7 +193,10 @@ function scrollUserMessageToTop(id: UUIDv7) {
 	if (!messageElement || !scrollContainer) return;
 
 	const containerTop = scrollContainer.getBoundingClientRect().top;
-	const messageTop = messageElement.getBoundingClientRect().top;
+	// A hidden off-screen turn has no box of its own content; its wrapper starts
+	// where the user message does.
+	const anchor = messageElement.closest<HTMLElement>(".s2b-turn-offscreen") ?? messageElement;
+	const messageTop = anchor.getBoundingClientRect().top;
 	const currentScroll = scrollContainer.scrollTop;
 
 	// Place the message near the top of the container, minus a small offset so
@@ -250,6 +253,92 @@ function jumpToBottom() {
 	if (!scrollContainer) return;
 	animateScrollTo("bottom");
 }
+
+// --- Off-screen turns ---
+//
+// Obsidian mobile announces the keyboard by changing `--keyboard-height` on the
+// root. WebKit then restyles every element that declares a custom property of
+// its own — which, through core's `:root *` focus-ring rule, is every element —
+// and `content-visibility` does not spare it. In a long chat that froze an
+// iPhone for over half a second before the composer could follow the keyboard.
+// Turns well outside the view are therefore taken out of rendering: their
+// measured height is locked on the wrapper and their content set to
+// `display: none`, so the scroll geometry is unchanged. They come back 1.5
+// viewports before they can scroll into sight.
+const OFFSCREEN_TURN_MARGIN = "150% 0px";
+const turnNodes = new Set<HTMLElement>();
+let turnObserver: IntersectionObserver | null = null;
+
+function setTurnOffscreen(node: HTMLElement, offscreen: boolean) {
+	if (offscreen === node.classList.contains("s2b-turn-offscreen")) return;
+	if (offscreen) {
+		node.style.height = `${node.getBoundingClientRect().height}px`;
+		node.classList.add("s2b-turn-offscreen");
+	} else {
+		node.classList.remove("s2b-turn-offscreen");
+		node.style.height = "";
+	}
+}
+
+function offscreenTurn(node: HTMLElement) {
+	turnNodes.add(node);
+	turnObserver?.observe(node);
+	return {
+		destroy() {
+			turnNodes.delete(node);
+			turnObserver?.unobserve(node);
+		},
+	};
+}
+
+// The observer needs the scroller as its root (the viewport would ignore the
+// margin, since the scroller clips first), and `bind:this` may land after the
+// turns' actions run — so turns register in a set and are observed from here.
+$effect(() => {
+	if (!scrollContainer) return;
+	const observer = new IntersectionObserver(
+		(entries) => {
+			for (const entry of entries) setTurnOffscreen(entry.target as HTMLElement, !entry.isIntersecting);
+		},
+		{ root: scrollContainer, rootMargin: OFFSCREEN_TURN_MARGIN },
+	);
+	turnObserver = observer;
+	for (const node of turnNodes) observer.observe(node);
+
+	// A hidden turn can't reflow, so its locked height goes stale when the
+	// message column's width changes (rotation, resizing a split). Once resizing
+	// settles, release every lock and re-observe: `observe` reports each turn's
+	// state afresh, so the still off-screen ones are re-measured at the new width.
+	// The column, not the scroller, is watched: it stops changing once it hits
+	// its max width. Settling first keeps a divider drag from laying out the
+	// whole chat on every step. Height changes (the keyboard) never trigger this
+	// — they don't reflow turns, and releasing then would bring back the restyle
+	// cost this avoids.
+	const column = scrollContainer.firstElementChild ?? scrollContainer;
+	let lastWidth = column.clientWidth;
+	let widthSettleTimer: number | undefined;
+	const widthObserver = new ResizeObserver(() => {
+		window.clearTimeout(widthSettleTimer);
+		widthSettleTimer = window.setTimeout(() => {
+			const width = column.clientWidth;
+			if (width === lastWidth) return;
+			lastWidth = width;
+			for (const node of turnNodes) {
+				setTurnOffscreen(node, false);
+				observer.unobserve(node);
+				observer.observe(node);
+			}
+		}, 150);
+	});
+	widthObserver.observe(column);
+	return () => {
+		window.clearTimeout(widthSettleTimer);
+		widthObserver.disconnect();
+		observer.disconnect();
+		turnObserver = null;
+		for (const node of turnNodes) setTurnOffscreen(node, false);
+	};
+});
 
 // Svelte action to register message refs
 function registerMessageRef(node: HTMLDivElement, id: string) {
@@ -584,6 +673,7 @@ $effect(() => {
         </div>
       {:else}
         {#each messages as messagePair, index (messagePair.stableKey ?? messagePair.id)}
+          <div class="s2b-chat-turn" use:offscreenTurn>
           {#if messagePair.transcriptEvent?.type === "summarization_marker"}
             <div
               class="summary-marker-row flex justify-center my-4"
@@ -876,6 +966,7 @@ $effect(() => {
 
             </div>
           {/if}
+          </div>
         {/each}
       {/if}
     </div>
@@ -897,6 +988,16 @@ $effect(() => {
 </div>
 
 <style>
+  /* `flow-root` keeps each turn's margins inside its own box, so the height
+     locked on an off-screen turn (see `offscreenTurn`) is its full footprint. */
+  .s2b-chat-turn {
+    display: flow-root;
+  }
+
+  .s2b-chat-turn:global(.s2b-turn-offscreen) > :global(*) {
+    display: none !important;
+  }
+
   /* Highlights the bubble anchored above the composer while it's being
      edited. `:global` because CollapsibleUserBubble renders its own root
      element from the `class` prop, outside this component's style scope.
