@@ -8,6 +8,7 @@ import { createAiTransportContext, runWithAiTransportContext } from "../lib/aiTr
 import { invalidateProviderState } from "../lib/query";
 import type SecondBrainPlugin from "../main";
 import type { ChatModel } from "../stores/chatTimeline";
+import { getSessionRegistry } from "../stores/chatStore.svelte";
 import { getData } from "../stores/dataStore.svelte";
 import { getPendingChangesStore } from "../stores/pendingChangesStore.svelte";
 import { BUILT_IN_TOOL_IDS, type BuiltInToolId, type AgentConfig, type SkillMetadata } from "../types/plugin";
@@ -342,6 +343,25 @@ export class AgentManager {
 	constructor(plugin: SecondBrainPlugin) {
 		this.plugin = plugin;
 		this.chatManager = new ObsidianChatManager(plugin);
+	}
+
+	/** Pin/unpin a session (sidebar action). */
+	setThreadPinned(threadId: string, pinned: boolean): void {
+		getData().setSessionPinned(threadId, pinned);
+	}
+
+	/**
+	 * Archive/restore a session (sidebar action). Archiving a running session is refused —
+	 * matches Claudian: a running session must be stopped before it can be archived.
+	 * Restoring (archived=false) is always allowed.
+	 */
+	setThreadArchived(threadId: string, archived: boolean): boolean {
+		if (archived && getSessionRegistry()?.sessionFor(threadId)?.isRunning) {
+			new Notice("Cannot archive a running session");
+			return false;
+		}
+		getData().setSessionArchived(threadId, archived);
+		return true;
 	}
 
 	/** Get the singleton registry instance */

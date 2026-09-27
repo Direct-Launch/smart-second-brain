@@ -28,6 +28,11 @@ const chatOpenLocationOptions: { display: string; value: ChatOpenLocation }[] = 
 	{ display: "Right sidebar", value: "right" },
 ];
 
+const sessionSidebarSideOptions: { display: string; value: "left" | "right" }[] = [
+	{ display: "Right", value: "right" },
+	{ display: "Left", value: "left" },
+];
+
 function suggestFolders(): TFolder[] {
 	return plugin.app.vault.getAllFolders(true);
 }
@@ -249,6 +254,22 @@ function getAgentSkillsSummary(agentId: string): { icons: string[]; overflow: nu
         dropdown={chatOpenLocationOptions}
         selected={pluginData.chatOpenLocation}
         onchange={(value) => (pluginData.chatOpenLocation = value)}
+      />
+    </SettingItem>
+
+    <SettingItem name="Session sidebar" desc="Show a list of all chat sessions inside the chat view">
+      <Toggle
+        checked={pluginData.enableSessionSidebar}
+        onchange={(checked) => (pluginData.enableSessionSidebar = checked)}
+      />
+    </SettingItem>
+
+    <SettingItem name="Session sidebar side" desc="Which side of the chat the session list appears on">
+      <Dropdown
+        type="options"
+        dropdown={sessionSidebarSideOptions}
+        selected={pluginData.sessionSidebarSide}
+        onchange={(value) => (pluginData.sessionSidebarSide = value)}
       />
     </SettingItem>
 

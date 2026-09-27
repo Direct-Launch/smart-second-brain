@@ -481,6 +481,13 @@ export type ChatOpenLocation = "tab" | "left" | "right";
 
 export type PrivacyMode = "private-by-default" | "public-by-default";
 
+/** Pin/archive flags for a chat session, keyed by its thread file path in `PluginData.sessionFlags`. */
+export interface SessionFlags {
+	pinned?: boolean;
+	pinnedAt?: number;
+	archived?: boolean;
+}
+
 export interface PluginData {
 	/** Incremented whenever a breaking schema change is made; drives runMigrations(). Absent on pre-versioning data ⇒ treated as 0. */
 	schemaVersion: number;
@@ -559,6 +566,16 @@ export interface PluginData {
 
 	chatOpenLocation: ChatOpenLocation;
 	lastActiveChatId: UUIDv7 | null;
+	/** Whether the chat session sidebar is enabled. */
+	enableSessionSidebar: boolean;
+	/** Which side of the workspace the session sidebar opens on. */
+	sessionSidebarSide: "left" | "right";
+	/** Sort order for the session manager's session list. */
+	sessionManagerSort: "last-updated" | "created";
+	/** Persisted width (px) of the session sidebar. */
+	sessionSidebarWidth: number;
+	/** Pin/archive flags per chat session, keyed by thread file path. */
+	sessionFlags: Record<string, SessionFlags>;
 	/** Whether the user has completed (or dismissed) the first-run onboarding flow. */
 	onboardingComplete: boolean;
 	/** Whether the onboarding splash intro animation has already played (so it plays only once). */

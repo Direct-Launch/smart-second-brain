@@ -29,6 +29,7 @@ import type {
 	PrivacyMode,
 	PromptFileReader,
 	RecentNoteEntry,
+	SessionFlags,
 	SkillUsageEntry,
 	StaleGuidance,
 	ToolConfig,
@@ -230,6 +231,11 @@ export const DEFAULT_SETTINGS: PluginData = {
 	showToolIODetails: false,
 	chatOpenLocation: "tab",
 	lastActiveChatId: null,
+	enableSessionSidebar: true,
+	sessionSidebarSide: "right",
+	sessionManagerSort: "last-updated",
+	sessionSidebarWidth: 240,
+	sessionFlags: {},
 	onboardingComplete: false,
 	onboardingSplashSeen: false,
 	dismissedRecommendations: [],
@@ -1560,6 +1566,74 @@ export class PluginDataStore {
 	set chatOpenLocation(val: ChatOpenLocation) {
 		this.#data.chatOpenLocation = val;
 		void this.saveSettings();
+	}
+
+	// --- Session Sidebar Settings ---
+
+	get enableSessionSidebar(): boolean {
+		return this.#data.enableSessionSidebar ?? true;
+	}
+	set enableSessionSidebar(val: boolean) {
+		this.#data.enableSessionSidebar = val;
+		void this.saveSettings();
+	}
+
+	get sessionSidebarSide(): "left" | "right" {
+		return this.#data.sessionSidebarSide ?? "right";
+	}
+	set sessionSidebarSide(val: "left" | "right") {
+		this.#data.sessionSidebarSide = val;
+		void this.saveSettings();
+	}
+
+	get sessionManagerSort(): "last-updated" | "created" {
+		return this.#data.sessionManagerSort ?? "last-updated";
+	}
+	set sessionManagerSort(val: "last-updated" | "created") {
+		this.#data.sessionManagerSort = val;
+		void this.saveSettings();
+	}
+
+	get sessionSidebarWidth(): number {
+		return this.#data.sessionSidebarWidth ?? 240;
+	}
+	set sessionSidebarWidth(val: number) {
+		this.#data.sessionSidebarWidth = val;
+		void this.saveSettings();
+	}
+
+	// --- Session Flags (pin/archive) ---
+
+	getSessionFlags(path: string): SessionFlags {
+		return this.#data.sessionFlags?.[path] ?? {};
+	}
+	setSessionPinned(path: string, pinned: boolean): void {
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		const cur = this.#data.sessionFlags[path] ?? {};
+		this.#data.sessionFlags[path] = pinned
+			? { ...cur, pinned: true, pinnedAt: cur.pinnedAt ?? Date.now() }
+			: { ...cur, pinned: false, pinnedAt: undefined };
+		void this.saveSettings();
+	}
+	setSessionArchived(path: string, archived: boolean): void {
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		const cur = this.#data.sessionFlags[path] ?? {};
+		this.#data.sessionFlags[path] = { ...cur, archived };
+		void this.saveSettings();
+	}
+	renameSessionFlags(oldPath: string, newPath: string): void {
+		const flags = this.#data.sessionFlags?.[oldPath];
+		if (!flags) return;
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		this.#data.sessionFlags[newPath] = flags;
+		delete this.#data.sessionFlags[oldPath];
+		void this.saveSettings();
+	}
+	removeSessionFlags(path: string): void {
+		if (this.#data.sessionFlags?.[path]) {
+			delete this.#data.sessionFlags[path];
+			void this.saveSettings();
+		}
 	}
 
 	// --- Favorite Models ---
