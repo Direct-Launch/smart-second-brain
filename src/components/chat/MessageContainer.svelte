@@ -1109,7 +1109,7 @@ $effect(() => {
   /* On mobile the scroller is shortened by the portaled composer's height
      (see `.scroll-container` in Chat.svelte), so lift the button above it. */
   :global(.is-mobile) .jump-to-bottom-overlay {
-    bottom: calc(var(--s2b-composer-height, 0px) + 8px);
+    bottom: calc(var(--s2b-composer-height, 0px) + 2px);
   }
 
   .jump-to-bottom-overlay :global(.jump-to-bottom) {
