@@ -623,6 +623,56 @@ $effect(() => {
 		if (scrollRafId !== null) cancelAnimationFrame(scrollRafId);
 	};
 });
+
+// --- Drag scroll lock ---
+//
+// Chromium auto-scrolls any user-scrollable box whose edge a drag hovers near.
+// The thread's bottom edge sits directly above the composer, so dragging a file
+// into the composer crossed that band on the way and ran the thread to the
+// bottom. While a drag is in progress the scroller is made non-user-scrollable
+// (`overflow: hidden` keeps its position; the stable gutter keeps a classic
+// scrollbar's width so nothing reflows). Only drags over this chat view lock
+// it — one headed for another pane leaves the thread scrollable. A `dragover`
+// fires every ~50ms while a drag is over the view, so a gap of DRAG_IDLE_MS
+// means it left or ended (`dragleave` is too noisy to rely on). DOM side
+// effect, not state.
+const DRAG_IDLE_MS = 250;
+
+$effect(() => {
+	const el = scrollContainer;
+	if (!el) return;
+	let locked = false;
+	let idleTimer: number | undefined;
+	const release = () => {
+		window.clearTimeout(idleTimer);
+		if (!locked) return;
+		locked = false;
+		el.style.overflowY = "";
+		el.style.scrollbarGutter = "";
+	};
+	const onDragOver = () => {
+		if (!locked) {
+			locked = true;
+			el.style.scrollbarGutter = "stable";
+			el.style.overflowY = "hidden";
+		}
+		window.clearTimeout(idleTimer);
+		idleTimer = window.setTimeout(release, DRAG_IDLE_MS);
+	};
+	// The whole chat view (thread + composer), not just the scroller: the
+	// composer is where the drag is headed.
+	const view = el.closest(".chat-root") ?? el;
+	const win = el.win;
+	view.addEventListener("dragover", onDragOver, true);
+	win.addEventListener("drop", release, true);
+	win.addEventListener("dragend", release, true);
+	return () => {
+		release();
+		view.removeEventListener("dragover", onDragOver, true);
+		win.removeEventListener("drop", release, true);
+		win.removeEventListener("dragend", release, true);
+	};
+});
 </script>
 
 <div class="message-area relative flex-1 min-h-0 z-20">

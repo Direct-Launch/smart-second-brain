@@ -15,6 +15,7 @@ import type { VisibleNote, VisibleNoteRef } from "../../hooks/useVisibleNotes.sv
 import type { SelectionRef } from "../../hooks/useSelection.svelte";
 import type { GraphNoteRef } from "../../stores/chatTimeline";
 import { mimeFromExtension } from "../../utils/attachments";
+import { renderPdfThumbnail } from "../../utils/pdfExtractor";
 import { extractObsidianDraggedPaths, hasObsidianFileDrag } from "../../utils/obsidianDrag";
 import { getData } from "../../stores/dataStore.svelte";
 import AgentPopover from "./AgentPopover.svelte";
@@ -88,11 +89,27 @@ let dragHasIssue = $state(false);
 const sendShortcutHint = isMobileUI() ? "" : `↵ · ${Platform.isMacOS ? "⌘↵" : "Ctrl+↵"} in a list`;
 let containerEl: HTMLDivElement | undefined = $state();
 // Floor for the input card when the composer runs out of pane height: its
-// controls plus one editor line. `clientHeight` excludes the card's 1px
-// borders, which its border-box `min-height` must include, hence the `+ 2`.
-let wrapperHeight = $state(0);
-let editorHeight = $state(0);
-const cardMinHeight = $derived(wrapperHeight && editorHeight ? wrapperHeight + 2 - editorHeight + 24 : 0);
+// controls plus one editor line. Summed from the rows around the editor, never
+// derived from the card's own height — the floor props the card open, so when
+// the tray shrank (say, an attachment removed) a self-derived floor only fell
+// by a few px per resize tick and the card visibly crept back down.
+let wrapperEl: HTMLDivElement | undefined = $state();
+let trayRowHeight = $state(0);
+let actionsRowHeight = $state(0);
+const cardMinHeight = $derived.by(() => {
+	if (!wrapperEl || !actionsRowHeight) return 0;
+	const style = getComputedStyle(wrapperEl);
+	const px = (value: string) => Number.parseFloat(value) || 0;
+	// Border-box `min-height`: the card's padding and borders, plus the two row
+	// gaps between its three in-flow children (tray, editor, actions).
+	const chrome =
+		px(style.paddingTop) +
+		px(style.paddingBottom) +
+		px(style.borderTopWidth) +
+		px(style.borderBottomWidth) +
+		2 * px(style.rowGap);
+	return trayRowHeight + actionsRowHeight + chrome + 24;
+});
 let contextTrayRef = $state<ReturnType<typeof ContextTray> | undefined>(undefined);
 // Read the tray's context outputs reactively through the instance. They're
 // getter functions over `$derived` state in ContextTray, so reading them inside
@@ -279,6 +296,41 @@ let seededEditPaths = new Set<string>();
  * idiom as `assembledPromptRequestVersion` above. */
 let seedEditToken = 0;
 
+/** Width of a PDF thumbnail in CSS px: the desktop tile size. */
+const PDF_THUMBNAIL_WIDTH = 120;
+
+function hasPreview(mimeType: string): boolean {
+	return mimeType.startsWith("image/") || mimeType === "application/pdf";
+}
+
+/** Object URL for an attachment's composer tile: the image itself, or page 1 of
+ * a PDF. Undefined when a PDF won't render — the tile falls back to a file card. */
+async function createPreviewUrl(buffer: ArrayBuffer, mimeType: string): Promise<string | undefined> {
+	if (mimeType.startsWith("image/")) return URL.createObjectURL(new Blob([buffer], { type: mimeType }));
+	try {
+		// pdfjs transfers the buffer to its worker, so hand it a copy.
+		const width = Math.round(PDF_THUMBNAIL_WIDTH * window.devicePixelRatio);
+		return URL.createObjectURL(await renderPdfThumbnail(new Uint8Array(buffer.slice(0)), width));
+	} catch {
+		return undefined;
+	}
+}
+
+let destroyed = false;
+
+/** Store a preview URL, unless its attachment was removed — or the composer
+ * destroyed — while the preview was being made (nothing would be left to
+ * revoke it). */
+function publishPreview(vaultPath: string, url: string | undefined): void {
+	if (!url) return;
+	if (destroyed || !attachments.some((a) => a.vaultPath === vaultPath)) {
+		URL.revokeObjectURL(url);
+		return;
+	}
+	previewUrls.set(vaultPath, url);
+	previewUrls = new Map(previewUrls);
+}
+
 /** Seed the edited message's attachments into the composer tray so they are
  * visible and removable during the edit — previously they rode along
  * invisibly, and anything the user attached during the edit was silently
@@ -301,17 +353,19 @@ async function seedEditAttachments(restored: ChatAttachment[]) {
 		attachmentSizes.set(att.vaultPath, file.stat.size);
 		attachmentSizes = new Map(attachmentSizes);
 		seededEditPaths.add(att.vaultPath);
-		if (att.mimeType.startsWith("image/")) {
+		if (hasPreview(att.mimeType)) {
 			try {
-				const buffer = await plugin.app.vault.readBinary(file);
+				const url = await createPreviewUrl(await plugin.app.vault.readBinary(file), att.mimeType);
 				// Re-check before publishing: the URL would leak (nothing left to
-				// revoke it) and the map write would resurrect a removed chip's
+				// revoke it) and the map write would resurrect a removed tile's
 				// preview if the edit ended during the read.
-				if (token !== seedEditToken) return;
-				previewUrls.set(att.vaultPath, URL.createObjectURL(new Blob([buffer], { type: att.mimeType })));
-				previewUrls = new Map(previewUrls);
+				if (token !== seedEditToken) {
+					if (url) URL.revokeObjectURL(url);
+					return;
+				}
+				publishPreview(att.vaultPath, url);
 			} catch {
-				// preview only — the chip still renders without it
+				// preview only — the tile still renders as a file card without it
 			}
 		}
 	}
@@ -464,6 +518,7 @@ $effect(() => {
 });
 
 onDestroy(() => {
+	destroyed = true;
 	// Stop any in-flight edit-attachment seeding; its writes would land on a
 	// dead component's state (and mint object URLs nothing revokes).
 	seedEditToken++;
@@ -828,12 +883,7 @@ async function processFiles(files: File[]) {
 			managedAttachmentPaths = new Set(managedAttachmentPaths);
 			count++;
 
-			// Create preview URL for images
-			if (mime.startsWith("image/")) {
-				const blob = new Blob([buffer], { type: mime });
-				previewUrls.set(vaultPath, URL.createObjectURL(blob));
-				previewUrls = new Map(previewUrls);
-			}
+			if (hasPreview(mime)) publishPreview(vaultPath, await createPreviewUrl(buffer, mime));
 		}
 	} catch (error) {
 		new Notice(`Failed to attach file: ${error instanceof Error ? error.message : String(error)}`);
@@ -889,11 +939,8 @@ async function attachVaultFile(file: TFile): Promise<boolean> {
 		attachmentSizes.set(file.path, size);
 		attachmentSizes = new Map(attachmentSizes);
 
-		if (mime.startsWith("image/")) {
-			const buffer = await getPlugin().app.vault.readBinary(file);
-			const blob = new Blob([buffer], { type: mime });
-			previewUrls.set(file.path, URL.createObjectURL(blob));
-			previewUrls = new Map(previewUrls);
+		if (hasPreview(mime)) {
+			publishPreview(file.path, await createPreviewUrl(await getPlugin().app.vault.readBinary(file), mime));
 		}
 
 		return true;
@@ -1213,13 +1260,16 @@ async function promoteVisibleNoteToAttachment(note: VisibleNote) {
     ondrop={dropTargetMode === "input" ? handleDrop : undefined}
     onclick={handleWrapperClick}
     role="region"
-    bind:clientHeight={wrapperHeight}
+    bind:this={wrapperEl}
     style:min-height={cardMinHeight ? `${cardMinHeight}px` : undefined}
   >
     <!-- `pt-0.5` (2px) on top of the wrapper's 4px `padding-top` puts the tray
          6px below the border. The old `pt-2` put it at 12px — a visibly large
          gap. -->
-    <div class="composer-tray-row flex flex-row flex-wrap items-start gap-1.5 pt-0.5 min-w-0">
+    <div
+      class="composer-tray-row flex flex-row flex-wrap items-start gap-1.5 pt-0.5 min-w-0"
+      bind:clientHeight={trayRowHeight}
+    >
       <ContextTray
         bind:this={contextTrayRef}
         graphPaths={registry.graphSelection}
@@ -1229,6 +1279,7 @@ async function promoteVisibleNoteToAttachment(note: VisibleNote) {
         onRemoveAttachment={removeAttachment}
         onPromoteToAttachment={promoteVisibleNoteToAttachment}
         canPromoteToAttachment={canPromoteVisibleNoteToAttachment}
+        attachmentPreviewUrls={previewUrls}
       />
       {#if savingFiles}
         <div class="text-xs text-text-muted flex items-center">Saving...</div>
@@ -1238,14 +1289,13 @@ async function promoteVisibleNoteToAttachment(note: VisibleNote) {
     <!-- Markdown Editor Container -->
     <div
       bind:this={editorContainer}
-      bind:clientHeight={editorHeight}
       class="markdown-editor-container w-full overflow-y-auto py-1 min-h-[24px]"
       id="chat-view-user-input-element"
       data-testid="message-input"
     ></div>
 
     <!-- Actions row: attachment, agent+model, send -->
-    <div class="chat-actions-row flex items-center gap-2">
+    <div class="chat-actions-row flex items-center gap-2" bind:clientHeight={actionsRowHeight}>
       <input
         bind:this={attachmentInputEl}
         type="file"
