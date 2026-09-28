@@ -8,33 +8,43 @@ workflow refuses a stable tag without one. Pre-releases (`2.3.0-beta.1`) need no
 section.
 
 Each version is a `## X.Y.Z (YYYY-MM-DD)` heading (the date is the release
-day; leave it off until you know it); use `###` and below inside it. PR
-references like `(#505)` become links in the plugin.
+day; leave it off until you know it). Under it, a one-line lede, then up to
+three sections in this order, skipping any that would be empty:
+
+- `### New`: things a user can newly do. Most readers stop here.
+- `### Improvements`: existing things that got better.
+- `### Fixes`: things that were broken.
+
+Chores (refactors, CI, scripts, internal cleanup) are not listed; a release
+with nothing else gets only the lede. Lead each bullet with a bold summary,
+prefixed with the area when it helps (`**Chat: …**`). PR references like
+`(#505)` become links in the plugin.
 
 ## 2.3.0 (2026-09-28)
 
 A reworked chat composer, especially on mobile, agents that keep their memory and skills up to date, and release notes inside the plugin.
 
-### Chat
-- **The composer grows as you type.** It expands up to two thirds of the chat pane before it scrolls, so the separate fullscreen editor is gone. Enter on a list line continues the list; Enter on an empty item ends it (#521).
-- **Attachments as preview tiles.** Images show a thumbnail and PDFs their first page; other files show a card. Click a tile to open the file, or use its corner × to remove it (#526).
-- **Take photo on mobile.** The attach menu has a Take photo row that goes straight to the camera (#520).
-- **One jump-to-bottom button** replaces the message-navigation arrows. It appears once you scroll away from the end, including while a reply streams below the fold (#522, #523, #527, #528).
-- **The mobile composer keeps up with the keyboard**, even in very large chats. It now slides with the keyboard as it opens and closes, and Obsidian's formatting toolbar is hidden while you type in the chat (#524, #525).
-- **Chats whose first turn failed get a proper title.** They are named `New Chat (failed)` and titled on their next successful turn, so new chats stop piling up as `New Chat (2)`, `(3)`, … (#530).
-- **Stream start-up failures fall back gracefully, and very large tool outputs are capped in their preview** instead of stalling the chat (#510, by @AdamsGH).
-
-### Agents
-- **Memory in view.** The system prompt now carries an index of your memory notes (each note's `description`, or the whole note when it's marked `always: true`), so the agent knows what it remembers without searching. Guidance now routes user facts to memory and task lessons into the skill that was used (#514).
-- **Skills are revised in place.** `manage_skills` gains a `patch` operation that changes one passage instead of rewriting the whole skill, and it only edits a skill the agent has loaded in that chat (#515).
-- **Where a skill came from and how it's used.** Skills the agent writes are marked as its own, and the Agent editor shows how often each custom skill has been used and revised (#516).
-- **Fewer narrating sentences.** The agent explains a tool call only when that tells you something new, and skips it for a single obvious lookup (#518, #519).
-- **Lighter vault listings.** `list_directory` at the root returns a folder overview with file counts instead of every file, and every listing stays within a size budget. The explore-vault and Dataview skills now lean on tags, properties and queries first (#513).
-- **The prompt comparison dialog only compares.** It shows your version against the default, with Open note and Use default; you edit the real note. The "Review" notice now clears as soon as you choose Use default (#529).
-
-### Plugin
+### New
+- **Chat: attachments as preview tiles.** Images show a thumbnail and PDFs their first page; other files show a card. Click a tile to open the file, or use its corner × to remove it (#526).
+- **Chat: Take photo on mobile.** The attach menu has a Take photo row that goes straight to the camera (#520).
+- **Chat: one jump-to-bottom button** replaces the message-navigation arrows. It appears once you scroll away from the end, including while a reply streams below the fold (#522, #523, #527, #528).
+- **Agents: memory in view.** The system prompt now carries an index of your memory notes (each note's `description`, or the whole note when it's marked `always: true`), so the agent knows what it remembers without searching. Guidance now routes user facts to memory and task lessons into the skill that was used (#514).
+- **Agents: skills are revised in place.** `manage_skills` gains a `patch` operation that changes one passage instead of rewriting the whole skill, and it only edits a skill the agent has loaded in that chat (#515).
+- **Agents: where a skill came from and how it's used.** Skills the agent writes are marked as its own, and the Agent editor shows how often each custom skill has been used and revised (#516).
 - **What's new, in the plugin.** After an update, a notice opens a What's new tab with the notes for every release since the one you last saw. The Show release notes command and a row in Settings → Troubleshooting open it any time (#533).
 - **Update notices.** Once a day the plugin asks GitHub whether a newer version exists and says so, with a link to Community plugins. It sends nothing about you or your vault, stays quiet while Obsidian's own automatic update check is on, and can be turned off under Settings → General → Privacy (#534).
+
+### Improvements
+- **Chat: the composer grows as you type.** It expands up to two thirds of the chat pane before it scrolls, so the separate fullscreen editor is gone. Enter on a list line continues the list; Enter on an empty item ends it (#521).
+- **Chat: the mobile composer keeps up with the keyboard**, even in very large chats. It now slides with the keyboard as it opens and closes, and Obsidian's formatting toolbar is hidden while you type in the chat (#524, #525).
+- **Agents: fewer narrating sentences.** The agent explains a tool call only when that tells you something new, and skips it for a single obvious lookup (#518, #519).
+- **Agents: lighter vault listings.** `list_directory` at the root returns a folder overview with file counts instead of every file, and every listing stays within a size budget. The explore-vault and Dataview skills now lean on tags, properties and queries first (#513).
+- **Settings: the prompt comparison dialog only compares.** It shows your version against the default, with Open note and Use default; you edit the real note (#529).
+
+### Fixes
+- **Chat: chats whose first turn failed get a proper title.** They are named `New Chat (failed)` and titled on their next successful turn, so new chats stop piling up as `New Chat (2)`, `(3)`, … (#530).
+- **Chat: stream start-up failures fall back gracefully, and very large tool outputs are capped in their preview** instead of stalling the chat (#510, by @AdamsGH).
+- **Settings: the prompt "Review" notice clears** as soon as you choose Use default, instead of staying until a reload (#529).
 
 **Thanks** to @AdamsGH for the first correct diagnosis of the cross-realm `AbortSignal` failure and for #510.
 
