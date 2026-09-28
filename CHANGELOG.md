@@ -11,12 +11,12 @@ Each version is a `## X.Y.Z (YYYY-MM-DD)` heading (the date is the release
 day; leave it off until you know it); use `###` and below inside it. PR
 references like `(#505)` become links in the plugin.
 
-## 2.3.0 (2026-09-27)
+## 2.3.0 (2026-09-28)
 
 A reworked chat composer, especially on mobile, agents that keep their memory and skills up to date, and release notes inside the plugin.
 
 ### Chat
-- **A composer that grows with you.** The input grows up to two thirds of the chat pane before it scrolls, so the separate fullscreen editor is gone. Enter on a list line continues the list; Enter on an empty item ends it (#521).
+- **The composer grows as you type.** It expands up to two thirds of the chat pane before it scrolls, so the separate fullscreen editor is gone. Enter on a list line continues the list; Enter on an empty item ends it (#521).
 - **Attachments as preview tiles.** Images show a thumbnail and PDFs their first page; other files show a card. Click a tile to open the file, or use its corner × to remove it (#526).
 - **Take photo on mobile.** The attach menu has a Take photo row that goes straight to the camera (#520).
 - **One jump-to-bottom button** replaces the message-navigation arrows. It appears once you scroll away from the end, including while a reply streams below the fold (#522, #523, #527, #528).
