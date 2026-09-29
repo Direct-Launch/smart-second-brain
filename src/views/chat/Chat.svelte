@@ -30,6 +30,10 @@ const data = getData();
 // hidden (dropdown fallback for the narrow case is a deferred fast-follow).
 let rootEl = $state<HTMLElement | null>(null);
 let containerWidth = $state(0);
+/** Width being dragged right now. Non-null only during a gesture, so the
+ * on-screen size follows the pointer while the *persisted* value
+ * (`data.sessionSidebarWidth`) is written once, on release. */
+let dragWidth = $state<number | null>(null);
 const wide = $derived(data.enableSessionSidebar && containerWidth >= 600);
 
 function observeWidth(node: HTMLElement) {
@@ -44,7 +48,7 @@ function observeWidth(node: HTMLElement) {
 }
 
 $effect(() => {
-	if (rootEl) rootEl.style.setProperty("--s2b-session-sidebar-width", `${data.sessionSidebarWidth}px`);
+	if (rootEl) rootEl.style.setProperty("--s2b-session-sidebar-width", `${dragWidth ?? data.sessionSidebarWidth}px`);
 });
 
 let messageContainer = $state<ReturnType<typeof MessageContainer> | undefined>();
@@ -343,7 +347,9 @@ function portalComposer(node: HTMLElement) {
         tabindex="0"
         use:sessionResizer={{
           getWidth: () => data.sessionSidebarWidth,
-          setWidth: (w) => (data.sessionSidebarWidth = w),
+          // Live width while dragging: component-local, so a drag never writes settings.
+          previewWidth: (w) => (dragWidth = w),
+          commitWidth: (w) => { dragWidth = null; data.sessionSidebarWidth = w; },
           getContainerWidth: () => containerWidth,
           side: data.sessionSidebarSide,
         }}
