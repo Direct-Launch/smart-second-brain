@@ -132,6 +132,14 @@ export class ChatSession {
 		return this.running;
 	}
 
+	/** State of the last message pair's assistant message, or undefined while the
+	 * session holds no messages. Read by the session sidebar to show a per-row
+	 * outcome for sessions that are already loaded, without opening the thread.
+	 * Reactive: messages is $state, so a row updates as a run settles. */
+	get lastAssistantState(): AssistantState | undefined {
+		return this.messages[this.messages.length - 1]?.assistantMessage.state;
+	}
+
 	touch(): void {
 		this.lastTouchedAt = Date.now();
 	}

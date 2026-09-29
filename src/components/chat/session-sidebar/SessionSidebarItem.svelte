@@ -2,11 +2,12 @@
 import { Menu } from "obsidian";
 import { icon } from "../../../utils/utils";
 import type { SessionRow } from "../../../stores/session-sidebar/logic";
+import { SESSION_STATUS_DISPLAY, type SessionStatus } from "../../../stores/session-sidebar/status";
 
 interface Props {
 	row: SessionRow;
 	active: boolean;
-	running: boolean;
+	status: SessionStatus;
 	archivedView: boolean;
 	onOpen: () => void;
 	onRename: () => void;
@@ -14,8 +15,14 @@ interface Props {
 	onTogglePin: () => void;
 	onToggleArchive: () => void;
 }
-const { row, active, running, archivedView, onOpen, onRename, onDelete, onTogglePin, onToggleArchive }: Props =
+const { row, active, status, archivedView, onOpen, onRename, onDelete, onTogglePin, onToggleArchive }: Props =
 	$props();
+
+/** running stays the single flag the row actions gate on; it is derived from the
+ * one status value rather than passed separately, so the indicator and the
+ * archive-disable can never disagree. */
+const running = $derived(status === "running");
+const statusDisplay = $derived(SESSION_STATUS_DISPLAY[status]);
 
 const dateStr = $derived(new Date(row.updatedAt).toLocaleDateString());
 
@@ -53,8 +60,19 @@ function openOverflowMenu(event: MouseEvent) {
 
 <div class="s2b-session-item" class:s2b-session-item-active={active} class:s2b-session-item-running={running}>
 	<button class="s2b-session-item-content" onclick={onOpen} type="button">
-		{#if running}
-			<span class="s2b-session-item-spinner" use:icon={"loader-circle"}></span>
+		{#if status !== "idle"}
+			<span
+				class="s2b-session-item-status"
+				class:s2b-session-item-status-progress={statusDisplay.tone === "progress"}
+				class:s2b-session-item-status-good={statusDisplay.tone === "good"}
+				class:s2b-session-item-status-bad={statusDisplay.tone === "bad"}
+				class:s2b-session-item-status-neutral={statusDisplay.tone === "neutral"}
+				class:s2b-session-item-status-spinning={status === "running"}
+				title={statusDisplay.label}
+			>
+				<span class="s2b-session-item-status-icon" use:icon={statusDisplay.icon}></span>
+				<span class="s2b-session-item-status-label">{statusDisplay.label}</span>
+			</span>
 		{/if}
 		<span class="s2b-session-item-title">{row.title}</span>
 		<span class="s2b-session-item-date">{dateStr}</span>
@@ -145,12 +163,48 @@ function openOverflowMenu(event: MouseEvent) {
 		font-size: var(--font-ui-smaller);
 	}
 
-	.s2b-session-item-spinner {
+	.s2b-session-item-status {
 		display: inline-flex;
 		flex: 0 0 auto;
 		width: 1em;
 		height: 1em;
+	}
+
+	.s2b-session-item-status-icon {
+		display: inline-flex;
+		width: 1em;
+		height: 1em;
+	}
+
+	.s2b-session-item-status-progress {
+		color: var(--text-accent);
+	}
+
+	.s2b-session-item-status-good {
+		color: var(--color-green);
+	}
+
+	.s2b-session-item-status-bad {
+		color: var(--color-red);
+	}
+
+	.s2b-session-item-status-neutral {
+		color: var(--text-faint);
+	}
+
+	.s2b-session-item-status-spinning .s2b-session-item-status-icon {
 		animation: s2b-session-item-spin 1.2s linear infinite;
+	}
+
+	/* Present in the DOM for assistive tech, invisible on screen: the row is too
+	   narrow for a word, but colour must never be the only signal. */
+	.s2b-session-item-status-label {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		overflow: hidden;
+		clip-path: inset(50%);
+		white-space: nowrap;
 	}
 
 	@keyframes s2b-session-item-spin {

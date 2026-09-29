@@ -4,6 +4,7 @@ import { getData } from "../../../stores/dataStore.svelte";
 import { getPlugin } from "../../../stores/state.svelte";
 import { getSessionSidebarStore } from "../../../stores/session-sidebar/sessionSidebarStore.svelte";
 import { filterRows, partition, sortRows } from "../../../stores/session-sidebar/logic";
+import { deriveSessionStatus, type SessionStatus } from "../../../stores/session-sidebar/status";
 import { icon } from "../../../utils/utils";
 import { confirmDelete } from "../../modal/ConfirmModal";
 import { promptText } from "../../modal/PromptModal";
@@ -32,8 +33,12 @@ const listRows = $derived(showArchived ? sections.archived : sections.active);
 const visibleRows = $derived(listRows.slice(0, visibleCount));
 const remaining = $derived(Math.max(0, listRows.length - visibleCount));
 
-function isRunning(id: string): boolean {
-	return !!registry?.sessionFor(id)?.isRunning;
+/** Status for a row. Only a loaded session can be running, so an unloaded thread
+ * honestly reports idle: the sidebar must never guess an outcome it cannot see. */
+function statusFor(id: string): SessionStatus {
+	const session = registry?.sessionFor(id);
+	if (!session) return "idle";
+	return deriveSessionStatus(session.isRunning, session.lastAssistantState);
 }
 
 async function newChat() {
@@ -107,7 +112,7 @@ function toggleArchive(id: string, archived: boolean) {
 			<SessionSidebarItem
 				{row}
 				active={row.threadId === threadPath}
-				running={isRunning(row.threadId)}
+				status={statusFor(row.threadId)}
 				archivedView={false}
 				onOpen={() => open(row.threadId)}
 				onRename={() => rename(row.threadId, row.title)}
@@ -128,7 +133,7 @@ function toggleArchive(id: string, archived: boolean) {
 		<SessionSidebarItem
 			{row}
 			active={row.threadId === threadPath}
-			running={isRunning(row.threadId)}
+			status={statusFor(row.threadId)}
 			archivedView={showArchived}
 			onOpen={() => open(row.threadId)}
 			onRename={() => rename(row.threadId, row.title)}
