@@ -1677,6 +1677,33 @@ export class SessionRegistry {
 
 	/* ---------------- Chat Creation / Metadata ---------------- */
 
+	/** Mirror the outcome a just-loaded thread already carries onto its session
+	 * flags, so the sidebar keeps showing it after this session is parked and
+	 * evicted. The run's settle handler is the only other writer, and it fires
+	 * only for a run that settles while the thread is loaded — so a thread that
+	 * settled earlier, or before this feature existed, reached its row with no
+	 * persisted status and rendered `idle`. Loading is the first moment that
+	 * outcome is readable without re-parsing the whole thread. Idempotent:
+	 * `setSessionStatus` is a no-op when the value is unchanged. */
+	private persistLoadedSessionStatus(session: ChatSession): void {
+		try {
+			const state = session.lastAssistantState;
+			// Only a terminal state is written; anything else is left as it was
+			// rather than guessed — the same contract as the settle handler.
+			if (
+				state !== AssistantState.success &&
+				state !== AssistantState.error &&
+				state !== AssistantState.cancelled
+			) {
+				return;
+			}
+			getData().setSessionStatus(String(session.id), state);
+		} catch {
+			// Settings can be unavailable during a headless or unit-test load.
+			// The status icon is cosmetic; the load itself must not fail on it.
+		}
+	}
+
 	async loadSession(file: TFile, targetCheckpointId?: string) {
 		// Claim the latest-load token synchronously, before any await, so
 		// overlapping loads are ordered by call order rather than by whichever
@@ -1801,6 +1828,7 @@ export class SessionRegistry {
 				}),
 			);
 			this.sessions.set(id, session);
+			this.persistLoadedSessionStatus(session);
 
 			await this.persistLastViewedCheckpoint(id, resolution.checkpointId, session);
 			this.evictParkedSessions();
@@ -1874,6 +1902,7 @@ export class SessionRegistry {
 		);
 
 		await this.persistLastViewedCheckpoint(id, resolution.checkpointId, session);
+		this.persistLoadedSessionStatus(session);
 	}
 
 	/** Switch a specific thread to a different branch by activating a checkpoint.
