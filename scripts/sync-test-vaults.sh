@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUILD_DIR="$REPO_ROOT/build/smart-second-brain"
+BUILD_DIR="$REPO_ROOT/build/prod"
 TEST_VAULTS_DIR="$(cd "$REPO_ROOT/../test-vaults" && pwd)"
 PLUGIN_ID="smart-second-brain"
 

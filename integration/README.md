@@ -21,7 +21,7 @@ End-to-end tests that run against a live Obsidian instance using the `obsidian` 
    bun run setup-vault
    ```
 
-   This creates a symlink from `integration/S2B Test Vault/.obsidian/plugins/smart-second-brain` → `build/smart-second-brain`.
+   This creates a symlink from `integration/S2B Test Vault/.obsidian/plugins/smart-second-brain` → `build/prod`.
 
 3. **Open the test vault in Obsidian:**
 
