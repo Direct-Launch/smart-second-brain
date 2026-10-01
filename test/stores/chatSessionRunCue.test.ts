@@ -35,6 +35,17 @@ vi.mock("../../src/stores/runCue", async (importOriginal) => {
 	return { ...actual, emitRunCue: vi.fn() };
 });
 
+// The settle handler also records the outcome against the thread. Stub the store
+// so the assertions can see what it wrote without standing up plugin settings.
+const store = {
+	setSessionStatus: vi.fn(),
+	setSessionTitle: vi.fn(),
+	getSessionFlags: vi.fn(() => ({ title: "Holiday plans" })),
+	runSoundEnabled: true,
+	runNotificationEnabled: true,
+};
+vi.mock("../../src/stores/dataStore.svelte", () => ({ getData: () => store }));
+
 const THREAD_ID = "Chats/Run Cue.chat";
 
 function checkpoint(
@@ -118,6 +129,8 @@ describe("ChatSession — the settle cue survives a rebuilt pair identity", () =
 		vi.spyOn(console, "error").mockImplementation(() => {});
 		vi.spyOn(console, "warn").mockImplementation(() => {});
 		vi.mocked(emitRunCue).mockClear();
+		store.setSessionStatus.mockClear();
+		store.getSessionFlags.mockReturnValue({ title: "Holiday plans" });
 	});
 
 	afterEach(() => {
@@ -161,5 +174,32 @@ describe("ChatSession — the settle cue survives a rebuilt pair identity", () =
 
 		expect(emitRunCue).toHaveBeenCalledTimes(1);
 		expect(vi.mocked(emitRunCue).mock.calls[0]?.[0]).toBe("success");
+	});
+
+	it("records the settled outcome against the thread, so the sidebar keeps it", async () => {
+		const { session, internals } = makeSession();
+
+		await run(session, internals);
+
+		// Without this write the row falls back to "unknown" as soon as the
+		// session is parked and evicted — the vanishing-icon bug.
+		expect(store.setSessionStatus).toHaveBeenCalledWith(THREAD_ID, AssistantState.success);
+	});
+
+	it("records a failure as failed, not as success", async () => {
+		const { session, internals } = makeSession();
+		internals.consumeStream = vi.fn().mockRejectedValue(new Error("model refused"));
+
+		await run(session, internals);
+
+		expect(store.setSessionStatus).toHaveBeenCalledWith(THREAD_ID, AssistantState.error);
+	});
+
+	it("passes the session name to the cue, so the notification names the chat", async () => {
+		const { session, internals } = makeSession();
+
+		await run(session, internals);
+
+		expect(vi.mocked(emitRunCue).mock.calls[0]?.[2]).toBe("Holiday plans");
 	});
 });

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("obsidian", () => import("../__mocks__/obsidian"));
 
 const getAllThreads = vi.fn();
-const flags = { getSessionFlags: vi.fn(() => ({})) };
+const flags = { getSessionFlags: vi.fn(() => ({})), setSessionTitle: vi.fn() };
 vi.mock("../../src/stores/state.svelte", () => ({
 	getPlugin: () => ({ agentManager: { getAllThreads } }),
 }));
@@ -20,6 +20,16 @@ describe("SessionSidebarStore", () => {
 		await store.refresh();
 		expect(store.rows).toHaveLength(1);
 		expect(store.rows[0]).toMatchObject({ threadId: "a.chat", title: "A", pinned: true });
+	});
+
+	it("mirrors each thread's title into its flags, so a cue can name the chat", async () => {
+		getAllThreads.mockResolvedValue([
+			{ threadId: "a.chat", title: "Holiday plans", createdAt: 1, updatedAt: 2 },
+			{ threadId: "b.chat", title: "Invoices", createdAt: 1, updatedAt: 3 },
+		]);
+		await getSessionSidebarStore().refresh();
+		expect(flags.setSessionTitle).toHaveBeenCalledWith("a.chat", "Holiday plans");
+		expect(flags.setSessionTitle).toHaveBeenCalledWith("b.chat", "Invoices");
 	});
 
 	it("registers a delete+rename+create listener on init", () => {

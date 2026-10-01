@@ -54,3 +54,25 @@ export function deriveSessionStatus(
 			return "idle";
 	}
 }
+
+/**
+ * Status for a sidebar row, which may have no live session at all.
+ *
+ * `running` needs a live session: only it knows a stream is in flight, so that
+ * can never be inferred from persistence. But a *settled* outcome outlives the
+ * session — the registry keeps only a few parked idle sessions and evicts the
+ * rest, so after navigating away the in-memory state is simply gone. Reading
+ * `idle` there presented a known outcome as unknown and the row's icon
+ * disappeared; the persisted outcome is what the row should fall back to.
+ *
+ * Live state wins when it is present, because it is the fresher of the two.
+ */
+export function deriveRowStatus(
+	isRunning: boolean,
+	lastAssistantState: AssistantState | undefined,
+	persistedState: AssistantState | undefined,
+): SessionStatus {
+	if (isRunning) return "running";
+	const state = lastAssistantState ?? persistedState;
+	return state === undefined ? "idle" : deriveSessionStatus(false, state);
+}

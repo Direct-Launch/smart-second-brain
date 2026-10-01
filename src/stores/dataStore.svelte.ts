@@ -36,6 +36,7 @@ import type {
 } from "../types/plugin";
 import { RECENT_NOTE_WINDOW_MS } from "../types/plugin";
 import { getDefaultEmbeddingBatchSize, normalizeEmbeddingBatchSize } from "../vectorstore/batchSize";
+import type { AssistantState } from "./chatTimeline";
 import { type UUIDv7, genUUIDv7 } from "../utils/uuid7Validator";
 
 import { type SmartGraphSettings, DEFAULT_SMART_GRAPH_SETTINGS } from "../types/graph";
@@ -1639,6 +1640,30 @@ export class PluginDataStore {
 		this.#data.sessionFlags[path] = { ...cur, archived };
 		void this.saveSettings();
 	}
+	/** Record the outcome of a thread's last settled turn, so the sidebar can
+	 * show it after the thread is unloaded and its live session evicted.
+	 *
+	 * The path is the thread's *current* path: the auto-title rename fires
+	 * mid-run and moves this whole record to the new path before the settle
+	 * handler runs, so no migration is needed here.
+	 *
+	 * Idempotent: an unchanged status does not touch disk. */
+	setSessionStatus(path: string, status: AssistantState): void {
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		const cur = this.#data.sessionFlags[path] ?? {};
+		if (cur.lastStatus === status) return;
+		this.#data.sessionFlags[path] = { ...cur, lastStatus: status };
+		void this.saveSettings();
+	}
+	/** Mirror the thread's display name into its flags, so a notification (or the
+	 * sidebar) can name a chat that is not loaded into a live session. */
+	setSessionTitle(path: string, title: string): void {
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		const cur = this.#data.sessionFlags[path] ?? {};
+		if (!title || cur.title === title) return;
+		this.#data.sessionFlags[path] = { ...cur, title };
+		void this.saveSettings();
+	}
 	renameSessionFlags(oldPath: string, newPath: string): void {
 		const flags = this.#data.sessionFlags?.[oldPath];
 		if (!flags) return;
@@ -2370,6 +2395,17 @@ export async function createData(plugin: SecondBrainPlugin): Promise<PluginDataS
 export function getData(): PluginDataStore {
 	if (!_pluginDataStore) throw new Error("Plugin does not exist");
 	return _pluginDataStore;
+}
+
+/** The last settled outcome recorded for a thread, or undefined when the thread
+ * has never settled a run (or its flags were cleared). Reads the persisted flag
+ * record, so it answers for a thread whose live session has been evicted. */
+export function getSessionStatus(path: string): AssistantState | undefined {
+	try {
+		return getData().getSessionFlags(path).lastStatus;
+	} catch {
+		return undefined;
+	}
 }
 
 /**

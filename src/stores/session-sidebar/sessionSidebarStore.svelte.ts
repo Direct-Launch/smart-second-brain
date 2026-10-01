@@ -10,6 +10,11 @@ export class SessionSidebarStore {
 	async refresh(): Promise<void> {
 		const snapshots = await getPlugin().agentManager.getAllThreads();
 		this.rows = toRows(snapshots, (id) => getData().getSessionFlags(id));
+		// Mirror each thread's on-disk title into its flags. This is the writer
+		// that keeps the mirror true across an external rename (a flag record is
+		// not recreated by a file rename, so without this a renamed thread's
+		// cached name would be the one it had when it first settled).
+		for (const row of this.rows) getData().setSessionTitle(row.threadId, row.title);
 	}
 
 	init(plugin: Plugin): void {

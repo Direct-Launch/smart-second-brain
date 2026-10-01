@@ -1,5 +1,6 @@
 import type { StoredProviderState } from "../stores/dataStore.svelte";
 import type { ProviderInstanceMeta } from "../types/provider/index";
+import type { AssistantState } from "../stores/chatTimeline";
 import type { UUIDv7 } from "../utils/uuid7Validator";
 import type { SmartGraphSettings } from "./graph";
 
@@ -486,6 +487,14 @@ export interface SessionFlags {
 	pinned?: boolean;
 	pinnedAt?: number;
 	archived?: boolean;
+	/** The session's display name, mirrored from the thread title. Kept here so
+	 * a settled run can name its chat in a notification even when the thread is
+	 * not loaded into a live session. */
+	title?: string;
+	/** Outcome of the thread's last settled turn. The live session knows this
+	 * too, but a parked idle session is evicted, so the sidebar reads this
+	 * rather than showing a known outcome as unknown. */
+	lastStatus?: AssistantState;
 }
 
 export interface PluginData {

@@ -4,7 +4,7 @@ import { getData } from "../../../stores/dataStore.svelte";
 import { getPlugin } from "../../../stores/state.svelte";
 import { getSessionSidebarStore } from "../../../stores/session-sidebar/sessionSidebarStore.svelte";
 import { filterRows, partition, sortRows } from "../../../stores/session-sidebar/logic";
-import { deriveSessionStatus, type SessionStatus } from "../../../stores/session-sidebar/status";
+import { deriveRowStatus, type SessionStatus } from "../../../stores/session-sidebar/status";
 import { icon } from "../../../utils/utils";
 import { confirmDelete } from "../../modal/ConfirmModal";
 import { promptText } from "../../modal/PromptModal";
@@ -33,12 +33,15 @@ const listRows = $derived(showArchived ? sections.archived : sections.active);
 const visibleRows = $derived(listRows.slice(0, visibleCount));
 const remaining = $derived(Math.max(0, listRows.length - visibleCount));
 
-/** Status for a row. Only a loaded session can be running, so an unloaded thread
- * honestly reports idle: the sidebar must never guess an outcome it cannot see. */
+/** Status for a row, from the live session when there is one and from the flag
+ * the settle handler persisted when there is not. See `deriveRowStatus`. */
 function statusFor(id: string): SessionStatus {
 	const session = registry?.sessionFor(id);
-	if (!session) return "idle";
-	return deriveSessionStatus(session.isRunning, session.lastAssistantState);
+	return deriveRowStatus(
+		session?.isRunning ?? false,
+		session?.lastAssistantState,
+		data.getSessionFlags(id).lastStatus,
+	);
 }
 
 async function newChat() {

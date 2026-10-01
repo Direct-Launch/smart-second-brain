@@ -19,6 +19,9 @@ export interface RunCue {
 	frequency: number | null;
 	/** Notification body, or null for no notification. */
 	body: string | null;
+	/** Display title for the notification — the session name, so a cue can say
+	 * *which* chat settled. Null when the session has no name yet. */
+	name: string | null;
 }
 
 /** How long the tone is held. A cue, not a jingle. */
@@ -34,13 +37,22 @@ export const CUE_FAIL_HZ = 320;
  * would be noise rather than information. Pure, so the decision is testable
  * without an AudioContext or a renderer.
  */
-export function cueForOutcome(outcome: RunOutcome, settings: RunCueSettings): RunCue {
-	if (outcome === "cancelled") return { play: false, frequency: null, body: null };
+export function cueForOutcome(
+	outcome: RunOutcome,
+	settings: RunCueSettings,
+	sessionName?: string,
+): RunCue {
+	// The session name rides alongside the body rather than inside it: several
+	// chats can be in flight, so "Chat run finished" on its own does not tell
+	// the user which one it was.
+	const name = sessionName?.trim() ? sessionName.trim() : null;
+	if (outcome === "cancelled") return { play: false, frequency: null, body: null, name: null };
 	const failed = outcome === "error";
 	return {
 		play: true,
 		frequency: settings.sound ? (failed ? CUE_FAIL_HZ : CUE_DONE_HZ) : null,
 		body: settings.notification ? (failed ? "Chat run failed" : "Chat run finished") : null,
+		name,
 	};
 }
 
@@ -94,14 +106,17 @@ function playTone(frequency: number): void {
 	}
 }
 
-function notify(body: string): void {
+function notify(body: string, name: string | null): void {
 	try {
 		if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-			new Notification(body);
+			// The session name is the OS notification's title; the outcome is
+			// its body. Falls back to the plugin name for an unnamed session.
+			new Notification(name ?? "Smart Second Brain", { body });
 			return;
 		}
-		// Notice is the guaranteed floor, and is not gated by permission.
-		new Notice(body);
+		// Notice is the guaranteed floor, and is not gated by permission. It
+		// renders one string, so the name is composed in rather than dropped.
+		new Notice(name ? `${name} — ${body}` : body);
 	} catch {
 		// Never throw into a settled run.
 	}
@@ -115,7 +130,11 @@ function notify(body: string): void {
  * (headless, or the unit tests for this path). A cue must never be able to break
  * the bookkeeping of a run that has already settled.
  */
-export function emitRunCue(outcome: RunOutcome | null, readSettings: () => RunCueSettings): void {
+export function emitRunCue(
+	outcome: RunOutcome | null,
+	readSettings: () => RunCueSettings,
+	sessionName?: string,
+): void {
 	if (!outcome) return;
 	let settings: RunCueSettings;
 	try {
@@ -123,8 +142,8 @@ export function emitRunCue(outcome: RunOutcome | null, readSettings: () => RunCu
 	} catch {
 		return;
 	}
-	const cue = cueForOutcome(outcome, settings);
+	const cue = cueForOutcome(outcome, settings, sessionName);
 	if (!cue.play) return;
 	if (cue.frequency !== null) playTone(cue.frequency);
-	if (cue.body) notify(cue.body);
+	if (cue.body) notify(cue.body, cue.name);
 }

@@ -7,7 +7,23 @@ describe("cueForOutcome", () => {
 	const off = { sound: false, notification: false };
 
 	it("stays silent for a run the user cancelled", () => {
-		expect(cueForOutcome("cancelled", on)).toEqual({ play: false, frequency: null, body: null });
+		expect(cueForOutcome("cancelled", on)).toEqual({
+			play: false,
+			frequency: null,
+			body: null,
+			name: null,
+		});
+	});
+
+	it("carries the session name so a cue can say which chat settled", () => {
+		expect(cueForOutcome("success", on, "Holiday plans").name).toBe("Holiday plans");
+		expect(cueForOutcome("error", on, "Holiday plans").name).toBe("Holiday plans");
+	});
+
+	it("treats a blank or missing name as no name", () => {
+		expect(cueForOutcome("success", on).name).toBeNull();
+		expect(cueForOutcome("success", on, "").name).toBeNull();
+		expect(cueForOutcome("success", on, "   ").name).toBeNull();
 	});
 
 	it("gives failure and completion distinguishable tones", () => {

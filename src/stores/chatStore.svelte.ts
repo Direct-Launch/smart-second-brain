@@ -784,10 +784,42 @@ export class ChatSession {
 			// 2026-10-01: `settledPair=MISSING … emit outcome=null` on a successful
 			// turn, so the settled state must never depend on the identity surviving.
 			const settledState = settledPair?.assistantMessage.state ?? pair.assistantMessage.state;
-			emitRunCue(outcomeForAssistantState(settledState), () => ({
-				sound: getData().runSoundEnabled,
-				notification: getData().runNotificationEnabled,
-			}));
+			const settledOutcome = outcomeForAssistantState(settledState);
+
+			// Record the outcome against the thread so the sidebar keeps showing a
+			// settled run after this session is parked and evicted — the live
+			// session is the only other place the outcome lives. Only a terminal
+			// state is written; anything else is left as it was rather than
+			// guessed. `this.id` is already the post-rename path here, because
+			// the auto-title rename runs (and rekeys the flags) earlier in this same
+			// try block — and stays the old path when no rename happened.
+			const settledStatus =
+				settledState === AssistantState.success
+					? AssistantState.success
+					: settledState === AssistantState.error
+						? AssistantState.error
+						: settledState === AssistantState.cancelled
+							? AssistantState.cancelled
+							: undefined;
+
+			let cueName: string | undefined;
+			try {
+				if (settledStatus !== undefined) getData().setSessionStatus(String(this.id), settledStatus);
+				cueName = getData().getSessionFlags(String(this.id)).title;
+			} catch {
+				// Settings can be unavailable in a headless settle (or the unit
+				// tests for this path). The cue still fires below; a missing name
+				// only costs the notification its title.
+			}
+
+			emitRunCue(
+				settledOutcome,
+				() => ({
+					sound: getData().runSoundEnabled,
+					notification: getData().runNotificationEnabled,
+				}),
+				cueName,
+			);
 		}
 	}
 
@@ -1704,6 +1736,17 @@ export class SessionRegistry {
 					if (!session || this.sessions.get(session.id) !== session) return;
 					void this.reloadSessionInstance(session);
 				});
+			}
+
+			// Mirror the thread's on-disk title into its flags as soon as it is
+			// known, so a cue can name the chat before its first settle.
+			const loadTitle = history?.title?.trim();
+			if (loadTitle) {
+				try {
+					getData().setSessionTitle(id, loadTitle);
+				} catch {
+					// Settings may be unavailable early in boot; not fatal.
+				}
 			}
 
 			const savedCheckpointId = this.getLastViewedCheckpointId(history);
