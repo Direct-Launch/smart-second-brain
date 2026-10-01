@@ -36,11 +36,16 @@ interface SessionResizerOptions {
  * `pointermove` but writes **once**, on `pointerup`; a held arrow key is
  * coalesced through a short debounce. Writing settings per pointer move is what
  * corrupted `data.json` on 2026-09-27 — the store's setter saves on every
- * assignment, so a single drag produced a burst of whole-file writes. */
+ * assignment, so a single drag produced a burst of whole-file writes.
+ *
+ * The pointer is captured on the divider for the duration of a drag, so a release
+ * that lands outside the strip still ends the gesture rather than leaving it
+ * stuck to the cursor. */
 export function sessionResizer(node: HTMLElement, opts: SessionResizerOptions) {
 	let startX = 0;
 	let startW = 0;
 	let dragging = false;
+	let activePointer: number | null = null;
 	let commitTimer: ReturnType<typeof setTimeout> | null = null;
 	let pending: number | null = null;
 
@@ -66,6 +71,19 @@ export function sessionResizer(node: HTMLElement, opts: SessionResizerOptions) {
 		pending = w;
 	};
 
+	/** Capture the pointer for the whole gesture, so a release that lands outside
+	 * the 5px strip — or over an iframe/webview — still ends the drag instead of
+	 * leaving it stuck to the cursor. Guarded, because headless and test
+	 * environments need not implement capture; the window listeners below deliver
+	 * the gesture either way. */
+	const capturePointer = (id: number) => {
+		try {
+			node.setPointerCapture(id);
+		} catch {
+			activePointer = null;
+		}
+	};
+
 	const onMove = (e: PointerEvent) => {
 		if (!dragging) return;
 		const dir = opts.side === "left" ? 1 : -1;
@@ -79,15 +97,27 @@ export function sessionResizer(node: HTMLElement, opts: SessionResizerOptions) {
 		document.body.classList.remove("s2b-resizing-session-sidebar");
 		window.removeEventListener("pointermove", onMove);
 		window.removeEventListener("pointerup", onUp);
+		window.removeEventListener("pointercancel", onUp);
+		if (activePointer !== null) {
+			try {
+				if (node.hasPointerCapture(activePointer)) node.releasePointerCapture(activePointer);
+			} catch {
+				// Capture was never established; there is nothing to release.
+			}
+			activePointer = null;
+		}
 		flush();
 	};
 	const onDown = (e: PointerEvent) => {
 		dragging = true;
 		startX = e.clientX;
 		startW = opts.getWidth();
+		activePointer = e.pointerId;
+		capturePointer(e.pointerId);
 		document.body.classList.add("s2b-resizing-session-sidebar");
 		window.addEventListener("pointermove", onMove);
 		window.addEventListener("pointerup", onUp);
+		window.addEventListener("pointercancel", onUp);
 		e.preventDefault();
 	};
 	const onKey = (e: KeyboardEvent) => {
