@@ -14,6 +14,7 @@ import { formatSelectionContext, type SelectionRef } from "../hooks/useSelection
 import { type UUIDv7, genUUIDv7 } from "../utils/uuid7Validator";
 import { DEFAULT_AGENT_ID } from "./agentDefaults";
 import { getData } from "./dataStore.svelte";
+import { emitRunCue, outcomeForAssistantState, primeAudio } from "./runCue";
 import { getPlugin } from "./state.svelte";
 import { Logger } from "../utils/logging";
 import { shouldSummarizeForEstimatedTokens } from "../agent/summarization";
@@ -621,6 +622,9 @@ export class ChatSession {
 		}
 
 		this.abortController = new AbortController();
+		// A run is always started by a user gesture, which is the only moment
+		// Chromium lets us open an AudioContext that can actually be heard later.
+		primeAudio();
 		this.running = true;
 		const signal = this.abortController.signal;
 		this.touch();
@@ -767,6 +771,13 @@ export class ChatSession {
 			this.summarizingHistory = false;
 			this.messageState = MessageState.idle;
 			this.touch();
+			// One cue per settled run. The catch above has already normalised the
+			// outcome, so this reads a real terminal state, and it fires from the
+			// session rather than a pane, so it happens once however many are open.
+			emitRunCue(outcomeForAssistantState(settledPair?.assistantMessage.state), () => ({
+				sound: getData().runSoundEnabled,
+				notification: getData().runNotificationEnabled,
+			}));
 		}
 	}
 

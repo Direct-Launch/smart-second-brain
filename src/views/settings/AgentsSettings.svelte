@@ -273,6 +273,20 @@ function getAgentSkillsSummary(agentId: string): { icons: string[]; overflow: nu
       />
     </SettingItem>
 
+    <SettingItem name="Completion sound" desc="Play a short tone when a chat run finishes or fails">
+      <Toggle
+        checked={pluginData.runSoundEnabled}
+        onchange={(checked) => (pluginData.runSoundEnabled = checked)}
+      />
+    </SettingItem>
+
+    <SettingItem name="Run notifications" desc="Show a notification when a chat run finishes or fails">
+      <Toggle
+        checked={pluginData.runNotificationEnabled}
+        onchange={(checked) => (pluginData.runNotificationEnabled = checked)}
+      />
+    </SettingItem>
+
     <!-- Obsidian mobile has no status bar (addStatusBarItem is a no-op there), so the
          toggle would control nothing. Hide it rather than offering a dead switch. -->
     {#if !isMobileUI()}

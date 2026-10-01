@@ -574,6 +574,10 @@ export interface PluginData {
 	sessionManagerSort: "last-updated" | "created";
 	/** Persisted width (px) of the session sidebar. */
 	sessionSidebarWidth: number;
+	/** Play a short tone when a chat run settles (success or failure). */
+	runSoundEnabled: boolean;
+	/** Raise a notification when a chat run settles (success or failure). */
+	runNotificationEnabled: boolean;
 	/** Pin/archive flags per chat session, keyed by thread file path. */
 	sessionFlags: Record<string, SessionFlags>;
 	/** Whether the user has completed (or dismissed) the first-run onboarding flow. */

@@ -235,6 +235,8 @@ export const DEFAULT_SETTINGS: PluginData = {
 	sessionSidebarSide: "right",
 	sessionManagerSort: "last-updated",
 	sessionSidebarWidth: 240,
+	runSoundEnabled: true,
+	runNotificationEnabled: true,
 	sessionFlags: {},
 	onboardingComplete: false,
 	onboardingSplashSeen: false,
@@ -1599,6 +1601,22 @@ export class PluginDataStore {
 	}
 	set sessionSidebarWidth(val: number) {
 		this.#data.sessionSidebarWidth = val;
+		void this.saveSettings();
+	}
+
+	get runSoundEnabled(): boolean {
+		return this.#data.runSoundEnabled ?? true;
+	}
+	set runSoundEnabled(val: boolean) {
+		this.#data.runSoundEnabled = val;
+		void this.saveSettings();
+	}
+
+	get runNotificationEnabled(): boolean {
+		return this.#data.runNotificationEnabled ?? true;
+	}
+	set runNotificationEnabled(val: boolean) {
+		this.#data.runNotificationEnabled = val;
 		void this.saveSettings();
 	}
 
