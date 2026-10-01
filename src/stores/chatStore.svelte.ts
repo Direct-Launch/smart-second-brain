@@ -771,10 +771,20 @@ export class ChatSession {
 			this.summarizingHistory = false;
 			this.messageState = MessageState.idle;
 			this.touch();
-			// One cue per settled run. The catch above has already normalised the
-			// outcome, so this reads a real terminal state, and it fires from the
-			// session rather than a pane, so it happens once however many are open.
-			emitRunCue(outcomeForAssistantState(settledPair?.assistantMessage.state), () => ({
+			// One cue per settled run. The `catch` above has already normalised the
+			// outcome onto `pair`, so `pair` is the reliable read and the lookup is
+			// only a preference (a rebuild may have replaced the pair with an
+			// equivalent one that should carry the stamp instead).
+			//
+			// Do NOT read only the lookup result. `findPairAcrossRebuild` prefers
+			// `stableKey`, but the optimistic pair this run started from is built in
+			// `sendMessage` *without* one — so once the settle rebuild renumbers
+			// `MessagePair.id`, the lookup matches nothing, returns undefined, and the
+			// cue goes silent on a run that actually succeeded. Verified live
+			// 2026-10-01: `settledPair=MISSING … emit outcome=null` on a successful
+			// turn, so the settled state must never depend on the identity surviving.
+			const settledState = settledPair?.assistantMessage.state ?? pair.assistantMessage.state;
+			emitRunCue(outcomeForAssistantState(settledState), () => ({
 				sound: getData().runSoundEnabled,
 				notification: getData().runNotificationEnabled,
 			}));
