@@ -817,6 +817,8 @@ export class ChatSession {
 				() => ({
 					sound: getData().runSoundEnabled,
 					notification: getData().runNotificationEnabled,
+					successSoundPath: getData().runSuccessSoundPath,
+					failureSoundPath: getData().runFailureSoundPath,
 				}),
 				cueName,
 			);

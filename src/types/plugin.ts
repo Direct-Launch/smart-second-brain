@@ -587,6 +587,10 @@ export interface PluginData {
 	runSoundEnabled: boolean;
 	/** Raise a notification when a chat run settles (success or failure). */
 	runNotificationEnabled: boolean;
+	/** Absolute path to a sound file played when a run succeeds. Blank uses the built-in tone. */
+	runSuccessSoundPath: string;
+	/** Absolute path to a sound file played when a run fails. Blank uses the built-in tone. */
+	runFailureSoundPath: string;
 	/** Pin/archive flags per chat session, keyed by thread file path. */
 	sessionFlags: Record<string, SessionFlags>;
 	/** Whether the user has completed (or dismissed) the first-run onboarding flow. */

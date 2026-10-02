@@ -11,6 +11,7 @@ import Button from "../../components/ui/Button.svelte";
 import { confirmDelete } from "../../components/modal/ConfirmModal";
 import Dropdown from "../../components/ui/Dropdown.svelte";
 import Icon from "../../components/ui/Icon.svelte";
+import Text from "../../components/ui/Text.svelte";
 import Toggle from "../../components/ui/Toggle.svelte";
 import { getProviderDefinition } from "../../providers/index";
 import { getData } from "../../stores/dataStore.svelte";
@@ -290,6 +291,30 @@ function getAgentSkillsSummary(agentId: string): { icons: string[]; overflow: nu
     <!-- Obsidian mobile has no status bar (addStatusBarItem is a no-op there), so the
          toggle would control nothing. Hide it rather than offering a dead switch. -->
     {#if !isMobileUI()}
+      <SettingItem
+        name="Success sound file"
+        desc="Absolute path to a sound file to play when a run succeeds. Leave empty for the built-in tone."
+      >
+        <Text
+          placeholder={"C:/Windows/Media/tada.wav"}
+          inputType="text"
+          value={pluginData.runSuccessSoundPath}
+          onblur={(v) => (pluginData.runSuccessSoundPath = v)}
+        />
+      </SettingItem>
+
+      <SettingItem
+        name="Failure sound file"
+        desc="Absolute path to a sound file to play when a run fails. Leave empty for the built-in tone."
+      >
+        <Text
+          placeholder={"C:/Windows/Media/Windows Error.wav"}
+          inputType="text"
+          value={pluginData.runFailureSoundPath}
+          onblur={(v) => (pluginData.runFailureSoundPath = v)}
+        />
+      </SettingItem>
+
       <SettingItem
         name="Show active agents in status bar"
         desc="Display a clickable indicator in the status bar for each chat with a running agent."

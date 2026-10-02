@@ -238,6 +238,8 @@ export const DEFAULT_SETTINGS: PluginData = {
 	sessionSidebarWidth: 240,
 	runSoundEnabled: true,
 	runNotificationEnabled: true,
+	runSuccessSoundPath: "",
+	runFailureSoundPath: "",
 	sessionFlags: {},
 	onboardingComplete: false,
 	onboardingSplashSeen: false,
@@ -1618,6 +1620,22 @@ export class PluginDataStore {
 	}
 	set runNotificationEnabled(val: boolean) {
 		this.#data.runNotificationEnabled = val;
+		void this.saveSettings();
+	}
+
+	get runSuccessSoundPath(): string {
+		return this.#data.runSuccessSoundPath ?? "";
+	}
+	set runSuccessSoundPath(val: string) {
+		this.#data.runSuccessSoundPath = val;
+		void this.saveSettings();
+	}
+
+	get runFailureSoundPath(): string {
+		return this.#data.runFailureSoundPath ?? "";
+	}
+	set runFailureSoundPath(val: string) {
+		this.#data.runFailureSoundPath = val;
 		void this.saveSettings();
 	}
 
