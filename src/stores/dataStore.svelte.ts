@@ -29,12 +29,14 @@ import type {
 	PrivacyMode,
 	PromptFileReader,
 	RecentNoteEntry,
+	SessionFlags,
 	SkillUsageEntry,
 	StaleGuidance,
 	ToolConfig,
 } from "../types/plugin";
 import { RECENT_NOTE_WINDOW_MS } from "../types/plugin";
 import { getDefaultEmbeddingBatchSize, normalizeEmbeddingBatchSize } from "../vectorstore/batchSize";
+import type { AssistantState } from "./chatTimeline";
 import { type UUIDv7, genUUIDv7 } from "../utils/uuid7Validator";
 
 import { type SmartGraphSettings, DEFAULT_SMART_GRAPH_SETTINGS } from "../types/graph";
@@ -230,6 +232,15 @@ export const DEFAULT_SETTINGS: PluginData = {
 	showToolIODetails: false,
 	chatOpenLocation: "tab",
 	lastActiveChatId: null,
+	enableSessionSidebar: true,
+	sessionSidebarSide: "right",
+	sessionManagerSort: "last-updated",
+	sessionSidebarWidth: 240,
+	runSoundEnabled: true,
+	runNotificationEnabled: true,
+	runSuccessSoundPath: "",
+	runFailureSoundPath: "",
+	sessionFlags: {},
 	onboardingComplete: false,
 	onboardingSplashSeen: false,
 	dismissedRecommendations: [],
@@ -1562,6 +1573,130 @@ export class PluginDataStore {
 		void this.saveSettings();
 	}
 
+	// --- Session Sidebar Settings ---
+
+	get enableSessionSidebar(): boolean {
+		return this.#data.enableSessionSidebar ?? true;
+	}
+	set enableSessionSidebar(val: boolean) {
+		this.#data.enableSessionSidebar = val;
+		void this.saveSettings();
+	}
+
+	get sessionSidebarSide(): "left" | "right" {
+		return this.#data.sessionSidebarSide ?? "right";
+	}
+	set sessionSidebarSide(val: "left" | "right") {
+		this.#data.sessionSidebarSide = val;
+		void this.saveSettings();
+	}
+
+	get sessionManagerSort(): "last-updated" | "created" {
+		return this.#data.sessionManagerSort ?? "last-updated";
+	}
+	set sessionManagerSort(val: "last-updated" | "created") {
+		this.#data.sessionManagerSort = val;
+		void this.saveSettings();
+	}
+
+	get sessionSidebarWidth(): number {
+		return this.#data.sessionSidebarWidth ?? 240;
+	}
+	set sessionSidebarWidth(val: number) {
+		this.#data.sessionSidebarWidth = val;
+		void this.saveSettings();
+	}
+
+	get runSoundEnabled(): boolean {
+		return this.#data.runSoundEnabled ?? true;
+	}
+	set runSoundEnabled(val: boolean) {
+		this.#data.runSoundEnabled = val;
+		void this.saveSettings();
+	}
+
+	get runNotificationEnabled(): boolean {
+		return this.#data.runNotificationEnabled ?? true;
+	}
+	set runNotificationEnabled(val: boolean) {
+		this.#data.runNotificationEnabled = val;
+		void this.saveSettings();
+	}
+
+	get runSuccessSoundPath(): string {
+		return this.#data.runSuccessSoundPath ?? "";
+	}
+	set runSuccessSoundPath(val: string) {
+		this.#data.runSuccessSoundPath = val;
+		void this.saveSettings();
+	}
+
+	get runFailureSoundPath(): string {
+		return this.#data.runFailureSoundPath ?? "";
+	}
+	set runFailureSoundPath(val: string) {
+		this.#data.runFailureSoundPath = val;
+		void this.saveSettings();
+	}
+
+	// --- Session Flags (pin/archive) ---
+
+	getSessionFlags(path: string): SessionFlags {
+		return this.#data.sessionFlags?.[path] ?? {};
+	}
+	setSessionPinned(path: string, pinned: boolean): void {
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		const cur = this.#data.sessionFlags[path] ?? {};
+		this.#data.sessionFlags[path] = pinned
+			? { ...cur, pinned: true, pinnedAt: cur.pinnedAt ?? Date.now() }
+			: { ...cur, pinned: false, pinnedAt: undefined };
+		void this.saveSettings();
+	}
+	setSessionArchived(path: string, archived: boolean): void {
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		const cur = this.#data.sessionFlags[path] ?? {};
+		this.#data.sessionFlags[path] = { ...cur, archived };
+		void this.saveSettings();
+	}
+	/** Record the outcome of a thread's last settled turn, so the sidebar can
+	 * show it after the thread is unloaded and its live session evicted.
+	 *
+	 * The path is the thread's *current* path: the auto-title rename fires
+	 * mid-run and moves this whole record to the new path before the settle
+	 * handler runs, so no migration is needed here.
+	 *
+	 * Idempotent: an unchanged status does not touch disk. */
+	setSessionStatus(path: string, status: AssistantState): void {
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		const cur = this.#data.sessionFlags[path] ?? {};
+		if (cur.lastStatus === status) return;
+		this.#data.sessionFlags[path] = { ...cur, lastStatus: status };
+		void this.saveSettings();
+	}
+	/** Mirror the thread's display name into its flags, so a notification (or the
+	 * sidebar) can name a chat that is not loaded into a live session. */
+	setSessionTitle(path: string, title: string): void {
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		const cur = this.#data.sessionFlags[path] ?? {};
+		if (!title || cur.title === title) return;
+		this.#data.sessionFlags[path] = { ...cur, title };
+		void this.saveSettings();
+	}
+	renameSessionFlags(oldPath: string, newPath: string): void {
+		const flags = this.#data.sessionFlags?.[oldPath];
+		if (!flags) return;
+		if (!this.#data.sessionFlags) this.#data.sessionFlags = {};
+		this.#data.sessionFlags[newPath] = flags;
+		delete this.#data.sessionFlags[oldPath];
+		void this.saveSettings();
+	}
+	removeSessionFlags(path: string): void {
+		if (this.#data.sessionFlags?.[path]) {
+			delete this.#data.sessionFlags[path];
+			void this.saveSettings();
+		}
+	}
+
 	// --- Favorite Models ---
 
 	get favoriteModels(): Array<{ provider: string; model: string }> {
@@ -2278,6 +2413,17 @@ export async function createData(plugin: SecondBrainPlugin): Promise<PluginDataS
 export function getData(): PluginDataStore {
 	if (!_pluginDataStore) throw new Error("Plugin does not exist");
 	return _pluginDataStore;
+}
+
+/** The last settled outcome recorded for a thread, or undefined when the thread
+ * has never settled a run (or its flags were cleared). Reads the persisted flag
+ * record, so it answers for a thread whose live session has been evicted. */
+export function getSessionStatus(path: string): AssistantState | undefined {
+	try {
+		return getData().getSessionFlags(path).lastStatus;
+	} catch {
+		return undefined;
+	}
 }
 
 /**

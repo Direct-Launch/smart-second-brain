@@ -27,6 +27,7 @@ import { SkillsService } from "./skills";
 import { createSessionRegistry, getSessionRegistry, type SessionRegistry } from "./stores/chatStore.svelte";
 import { type PluginDataStore, createData, getData } from "./stores/dataStore.svelte";
 import { PendingChangesStore, initPendingChangesStore } from "./stores/pendingChangesStore.svelte";
+import { getSessionSidebarStore } from "./stores/session-sidebar/sessionSidebarStore.svelte";
 import { setPlugin } from "./stores/state.svelte";
 import { onCodexSessionChange } from "./stores/providerRuntime.svelte";
 import { invalidateAuthState, invalidateProviderState } from "./lib/query";
@@ -511,6 +512,7 @@ export default class SecondBrainPlugin extends Plugin {
 		// update it later, so the indicator would never show a running chat.
 		this.agentManager = new AgentManager(this);
 		this.sessionRegistry = createSessionRegistry(this.agentManager);
+		getSessionSidebarStore().init(this);
 
 		// Global running-agent indicator in the status bar: shows the single
 		// streaming chat (if any) and lets the user stop it from anywhere. Mobile has

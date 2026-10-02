@@ -2,7 +2,11 @@
 import { QueryClientProvider } from "@tanstack/svelte-query";
 import Input from "../../components/chat/Input.svelte";
 import MessageContainer from "../../components/chat/MessageContainer.svelte";
+import { SessionSheetModal } from "../../components/chat/session-sidebar/SessionSheetModal";
+import SessionSidebar from "../../components/chat/session-sidebar/SessionSidebar.svelte";
+import { sessionResizer } from "../../components/chat/session-sidebar/resize";
 import { getSessionRegistry } from "../../stores/chatStore.svelte";
+import { getData } from "../../stores/dataStore.svelte";
 import { getPlugin } from "../../stores/state.svelte";
 import { icon } from "../../utils/utils";
 import { isMobileUI } from "../../utils/platform";
@@ -19,6 +23,33 @@ const threadPath = $derived(threadPathStore.current);
 const plugin = getPlugin();
 
 const registry = getSessionRegistry();
+
+const data = getData();
+// Reveal rule mirrors Claudian: the in-leaf session list only shows once the
+// leaf is wide enough to hold it alongside the chat column, else it's simply
+// hidden (dropdown fallback for the narrow case is a deferred fast-follow).
+let rootEl = $state<HTMLElement | null>(null);
+let containerWidth = $state(0);
+/** Width being dragged right now. Non-null only during a gesture, so the
+ * on-screen size follows the pointer while the *persisted* value
+ * (`data.sessionSidebarWidth`) is written once, on release. */
+let dragWidth = $state<number | null>(null);
+const wide = $derived(data.enableSessionSidebar && containerWidth >= 600);
+
+function observeWidth(node: HTMLElement) {
+	rootEl = node;
+	const ro = new ResizeObserver((entries) => {
+		containerWidth = entries[0].contentRect.width;
+	});
+	ro.observe(node);
+	return {
+		destroy: () => ro.disconnect(),
+	};
+}
+
+$effect(() => {
+	if (rootEl) rootEl.style.setProperty("--s2b-session-sidebar-width", `${dragWidth ?? data.sessionSidebarWidth}px`);
+});
 
 let messageContainer = $state<ReturnType<typeof MessageContainer> | undefined>();
 let input = $state<ReturnType<typeof Input> | undefined>();
@@ -297,68 +328,162 @@ function portalComposer(node: HTMLElement) {
 
 <QueryClientProvider client={plugin.queryClient}>
   <div
-    class="chat-root relative h-full flex flex-col gap-0 overflow-hidden"
-    data-testid="chat-root"
-    role="region"
-    ondragenter={handleRootDragEnter}
-    ondragover={handleRootDragOver}
-    ondragleave={handleRootDragLeave}
-    ondrop={handleRootDrop}
-    use:portalComposer
+    class="s2b-chat-shell"
+    class:s2b-wide-session={wide}
+    class:s2b-session-left={data.sessionSidebarSide === "left"}
+    use:observeWidth
   >
-    {#if registry}
-      <MessageContainer bind:this={messageContainer} {registry} {threadPath} />
-      <Input
-        bind:this={input}
-        {registry}
-        {threadPath}
-        dropTargetMode="view"
-        onDragStateChange={(state) => {
-          isDragging = state.isDragging;
-          dragMessage = state.dragMessage;
-          dragHasIssue = state.dragHasIssue;
+    {#if wide}
+      <SessionSidebar {threadPathStore} />
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+      <!-- role="separator" is correct per WAI-ARIA for a resizable-widget divider,
+           and the widget IS interactive (drag + arrow-key resize) even though
+           "separator" is not in Svelte's built-in interactive-role list. -->
+      <div
+        class="s2b-session-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize conversation sessions"
+        tabindex="0"
+        use:sessionResizer={{
+          getWidth: () => data.sessionSidebarWidth,
+          // Live width while dragging: component-local, so a drag never writes settings.
+          previewWidth: (w) => (dragWidth = w),
+          commitWidth: (w) => { dragWidth = null; data.sessionSidebarWidth = w; },
+          getContainerWidth: () => containerWidth,
+          side: data.sessionSidebarSide,
         }}
-        onMessageSent={() => messageContainer?.scrollToLatestMessage()}
-      />
-    {:else}
-      <div
-        class="flex h-full items-center justify-center p-4 text-center text-sm text-[--text-muted]"
-      >
-        Chat session is not available yet. Reopen this view after plugin initialization completes.
-      </div>
+      ></div>
     {/if}
-
-    {#if isDragging}
-      <!-- One dashed frame around the whole pane, because the whole pane is the
-           drop target. The dashed border is the conventional "this region
-           accepts drops" signal, so it belongs on the region — previously it
-           was wrapped around a small floating pill, which read as "drop onto
-           this chicklet" and left the actual target unmarked. The label sits
-           inside the frame and no longer carries a border of its own. -->
-      <div
-        class="chat-drop-overlay absolute inset-0 z-30 pointer-events-none flex items-center justify-center p-2 {dragHasIssue
-          ? 'chat-drop-overlay-issue'
-          : 'chat-drop-overlay-active'}"
-      >
-        <div class="chat-drop-frame flex items-center justify-center rounded-[16px]">
-          <div
-            class="chat-drop-overlay-panel flex items-center gap-3 rounded-2xl px-5 py-4 text-sm font-medium"
+    <div
+      class="chat-root relative h-full flex flex-col gap-0 overflow-hidden"
+      data-testid="chat-root"
+      role="region"
+      ondragenter={handleRootDragEnter}
+      ondragover={handleRootDragOver}
+      ondragleave={handleRootDragLeave}
+      ondrop={handleRootDrop}
+      use:portalComposer
+    >
+      {#if !wide && data.enableSessionSidebar}
+        <div class="s2b-session-sheet-trigger-bar">
+          <button
+            type="button"
+            class="clickable-icon s2b-session-sheet-trigger"
+            aria-label="Open sessions"
+            onclick={() => new SessionSheetModal(plugin.app, threadPathStore).open()}
           >
+            <div class="w-icon-xs h-icon-xs" use:icon={"panel-left-open"} style="--icon-size: var(--icon-xs)"></div>
+            <span>Sessions</span>
+          </button>
+        </div>
+      {/if}
+
+      {#if registry}
+        <MessageContainer bind:this={messageContainer} {registry} {threadPath} />
+        <Input
+          bind:this={input}
+          {registry}
+          {threadPath}
+          dropTargetMode="view"
+          onDragStateChange={(state) => {
+            isDragging = state.isDragging;
+            dragMessage = state.dragMessage;
+            dragHasIssue = state.dragHasIssue;
+          }}
+          onMessageSent={() => messageContainer?.scrollToLatestMessage()}
+        />
+      {:else}
+        <div
+          class="flex h-full items-center justify-center p-4 text-center text-sm text-[--text-muted]"
+        >
+          Chat session is not available yet. Reopen this view after plugin initialization completes.
+        </div>
+      {/if}
+
+      {#if isDragging}
+        <!-- One dashed frame around the whole pane, because the whole pane is the
+             drop target. The dashed border is the conventional "this region
+             accepts drops" signal, so it belongs on the region — previously it
+             was wrapped around a small floating pill, which read as "drop onto
+             this chicklet" and left the actual target unmarked. The label sits
+             inside the frame and no longer carries a border of its own. -->
+        <div
+          class="chat-drop-overlay absolute inset-0 z-30 pointer-events-none flex items-center justify-center p-2 {dragHasIssue
+            ? 'chat-drop-overlay-issue'
+            : 'chat-drop-overlay-active'}"
+        >
+          <div class="chat-drop-frame flex items-center justify-center rounded-[16px]">
             <div
-              class="h-icon-s w-icon-s"
-              style="--icon-size: var(--icon-s)"
-              data-testid="chat-drop-overlay-icon"
-              use:icon={dragHasIssue ? "alert-triangle" : "upload"}
-            ></div>
-            <span data-testid="chat-drop-overlay-message">{dragMessage}</span>
+              class="chat-drop-overlay-panel flex items-center gap-3 rounded-2xl px-5 py-4 text-sm font-medium"
+            >
+              <div
+                class="h-icon-s w-icon-s"
+                style="--icon-size: var(--icon-s)"
+                data-testid="chat-drop-overlay-icon"
+                use:icon={dragHasIssue ? "alert-triangle" : "upload"}
+              ></div>
+              <span data-testid="chat-drop-overlay-message">{dragMessage}</span>
+            </div>
           </div>
         </div>
-      </div>
-    {/if}
+      {/if}
+    </div>
   </div>
 </QueryClientProvider>
 
 <style>
+  /* Markup order is always [SessionSidebar][resizer][chat-root] (see the
+     template) regardless of `sessionSidebarSide` — the visual side comes
+     purely from flex direction here, so there's no duplicate markup branch.
+     Default direction is reversed because the default side is "right": that
+     puts chat-root first visually (left) and the sidebar last (right).
+     `.s2b-session-left` undoes the reverse, restoring DOM order so the
+     sidebar (first child) renders on the left. Below the 600px reveal
+     threshold `wide` is false, so the sidebar/resizer are unmounted and this
+     is just a full-width wrapper around `.chat-root`. */
+  .s2b-chat-shell {
+    display: flex;
+    flex-direction: row-reverse;
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  .s2b-chat-shell.s2b-session-left {
+    flex-direction: row;
+  }
+
+  .s2b-chat-shell > .chat-root {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .s2b-wide-session :global(.s2b-session-sidebar) {
+    flex: 0 0 var(--s2b-session-sidebar-width, 240px);
+    width: var(--s2b-session-sidebar-width, 240px);
+  }
+
+  .s2b-session-resizer {
+    flex: 0 0 auto;
+    width: 5px;
+    cursor: col-resize;
+    background: transparent;
+  }
+
+  .s2b-session-resizer:hover,
+  .s2b-session-resizer:focus-visible {
+    background: var(--interactive-accent);
+  }
+
+  /* Body-level class toggled by the resizer's pointer-drag handler (resize.ts):
+     keeps the col-resize cursor and prevents text selection for the whole
+     window while dragging, not just while over the 5px resizer strip. */
+  :global(body.s2b-resizing-session-sidebar) {
+    cursor: col-resize;
+    user-select: none;
+  }
+
   :global(.chat-root .scroll-container) {
     padding-top: 44px;
   }
@@ -399,6 +524,32 @@ function portalComposer(node: HTMLElement) {
 
   .chat-root {
     --chat-bg: var(--background-primary);
+  }
+
+  /* Compact mobile-only entry point to the session list (SessionSheetModal),
+     only mounted when the in-leaf sidebar is hidden (`!wide`) — see the
+     `{#if}` gate in the template, which also keeps this from ever
+     double-upping with `SessionSidebar` as the entry point. A slim flow
+     element at the top of `.chat-root`'s flex column, so it takes up real
+     height and `MessageContainer` (flex-1) scrolls below it rather than
+     under it. */
+  .s2b-session-sheet-trigger-bar {
+    flex: 0 0 auto;
+    display: flex;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    background: var(--chat-bg);
+    position: relative;
+    z-index: 26;
+  }
+
+  .s2b-session-sheet-trigger {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: var(--font-ui-smaller);
+    color: var(--text-muted);
   }
 
   /* The composer sizes itself against the chat pane's height (see
@@ -537,8 +688,12 @@ function portalComposer(node: HTMLElement) {
   }
 
   /* Anchor the absolute chat-root to the leaf's content area. `:has` is supported
-     on the iOS WebKit / modern Electron Obsidian runs on. */
-  :global(.is-mobile .view-content:has(> .chat-root)) {
+     on the iOS WebKit / modern Electron Obsidian runs on.
+
+     Descendant combinator, not `> .chat-root`: `.s2b-chat-shell` now sits between
+     `.view-content` and `.chat-root`, so a direct-child selector stopped matching
+     once the sidebar wrapper was added. */
+  :global(.is-mobile .view-content:has(.chat-root)) {
     position: relative;
   }
 

@@ -52,3 +52,5 @@ main.js
 # Local research artifacts — internal, not for publication
 /competitor-analysis.html
 /smart-second-brain-features.html
+# SDD scratch workspace
+.superpowers/

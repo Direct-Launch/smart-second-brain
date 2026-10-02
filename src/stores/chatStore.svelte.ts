@@ -14,6 +14,7 @@ import { formatSelectionContext, type SelectionRef } from "../hooks/useSelection
 import { type UUIDv7, genUUIDv7 } from "../utils/uuid7Validator";
 import { DEFAULT_AGENT_ID } from "./agentDefaults";
 import { getData } from "./dataStore.svelte";
+import { emitRunCue, outcomeForAssistantState, primeAudio } from "./runCue";
 import { getPlugin } from "./state.svelte";
 import { Logger } from "../utils/logging";
 import { shouldSummarizeForEstimatedTokens } from "../agent/summarization";
@@ -130,6 +131,14 @@ export class ChatSession {
 	 * update when a stream starts/stops. */
 	get isRunning(): boolean {
 		return this.running;
+	}
+
+	/** State of the last message pair's assistant message, or undefined while the
+	 * session holds no messages. Read by the session sidebar to show a per-row
+	 * outcome for sessions that are already loaded, without opening the thread.
+	 * Reactive: messages is $state, so a row updates as a run settles. */
+	get lastAssistantState(): AssistantState | undefined {
+		return this.messages[this.messages.length - 1]?.assistantMessage.state;
 	}
 
 	touch(): void {
@@ -613,6 +622,9 @@ export class ChatSession {
 		}
 
 		this.abortController = new AbortController();
+		// A run is always started by a user gesture, which is the only moment
+		// Chromium lets us open an AudioContext that can actually be heard later.
+		primeAudio();
 		this.running = true;
 		const signal = this.abortController.signal;
 		this.touch();
@@ -759,6 +771,57 @@ export class ChatSession {
 			this.summarizingHistory = false;
 			this.messageState = MessageState.idle;
 			this.touch();
+			// One cue per settled run. The `catch` above has already normalised the
+			// outcome onto `pair`, so `pair` is the reliable read and the lookup is
+			// only a preference (a rebuild may have replaced the pair with an
+			// equivalent one that should carry the stamp instead).
+			//
+			// Do NOT read only the lookup result. `findPairAcrossRebuild` prefers
+			// `stableKey`, but the optimistic pair this run started from is built in
+			// `sendMessage` *without* one — so once the settle rebuild renumbers
+			// `MessagePair.id`, the lookup matches nothing, returns undefined, and the
+			// cue goes silent on a run that actually succeeded. Verified live
+			// 2026-10-01: `settledPair=MISSING … emit outcome=null` on a successful
+			// turn, so the settled state must never depend on the identity surviving.
+			const settledState = settledPair?.assistantMessage.state ?? pair.assistantMessage.state;
+			const settledOutcome = outcomeForAssistantState(settledState);
+
+			// Record the outcome against the thread so the sidebar keeps showing a
+			// settled run after this session is parked and evicted — the live
+			// session is the only other place the outcome lives. Only a terminal
+			// state is written; anything else is left as it was rather than
+			// guessed. `this.id` is already the post-rename path here, because
+			// the auto-title rename runs (and rekeys the flags) earlier in this same
+			// try block — and stays the old path when no rename happened.
+			const settledStatus =
+				settledState === AssistantState.success
+					? AssistantState.success
+					: settledState === AssistantState.error
+						? AssistantState.error
+						: settledState === AssistantState.cancelled
+							? AssistantState.cancelled
+							: undefined;
+
+			let cueName: string | undefined;
+			try {
+				if (settledStatus !== undefined) getData().setSessionStatus(String(this.id), settledStatus);
+				cueName = getData().getSessionFlags(String(this.id)).title;
+			} catch {
+				// Settings can be unavailable in a headless settle (or the unit
+				// tests for this path). The cue still fires below; a missing name
+				// only costs the notification its title.
+			}
+
+			emitRunCue(
+				settledOutcome,
+				() => ({
+					sound: getData().runSoundEnabled,
+					notification: getData().runNotificationEnabled,
+					successSoundPath: getData().runSuccessSoundPath,
+					failureSoundPath: getData().runFailureSoundPath,
+				}),
+				cueName,
+			);
 		}
 	}
 
@@ -1616,6 +1679,33 @@ export class SessionRegistry {
 
 	/* ---------------- Chat Creation / Metadata ---------------- */
 
+	/** Mirror the outcome a just-loaded thread already carries onto its session
+	 * flags, so the sidebar keeps showing it after this session is parked and
+	 * evicted. The run's settle handler is the only other writer, and it fires
+	 * only for a run that settles while the thread is loaded — so a thread that
+	 * settled earlier, or before this feature existed, reached its row with no
+	 * persisted status and rendered `idle`. Loading is the first moment that
+	 * outcome is readable without re-parsing the whole thread. Idempotent:
+	 * `setSessionStatus` is a no-op when the value is unchanged. */
+	private persistLoadedSessionStatus(session: ChatSession): void {
+		try {
+			const state = session.lastAssistantState;
+			// Only a terminal state is written; anything else is left as it was
+			// rather than guessed — the same contract as the settle handler.
+			if (
+				state !== AssistantState.success &&
+				state !== AssistantState.error &&
+				state !== AssistantState.cancelled
+			) {
+				return;
+			}
+			getData().setSessionStatus(String(session.id), state);
+		} catch {
+			// Settings can be unavailable during a headless or unit-test load.
+			// The status icon is cosmetic; the load itself must not fail on it.
+		}
+	}
+
 	async loadSession(file: TFile, targetCheckpointId?: string) {
 		// Claim the latest-load token synchronously, before any await, so
 		// overlapping loads are ordered by call order rather than by whichever
@@ -1677,6 +1767,17 @@ export class SessionRegistry {
 				});
 			}
 
+			// Mirror the thread's on-disk title into its flags as soon as it is
+			// known, so a cue can name the chat before its first settle.
+			const loadTitle = history?.title?.trim();
+			if (loadTitle) {
+				try {
+					getData().setSessionTitle(id, loadTitle);
+				} catch {
+					// Settings may be unavailable early in boot; not fatal.
+				}
+			}
+
 			const savedCheckpointId = this.getLastViewedCheckpointId(history);
 			const graph = buildCheckpointGraph(checkpointHistory);
 			const resolution = resolveActiveCheckpointId(graph, {
@@ -1729,6 +1830,7 @@ export class SessionRegistry {
 				}),
 			);
 			this.sessions.set(id, session);
+			this.persistLoadedSessionStatus(session);
 
 			await this.persistLastViewedCheckpoint(id, resolution.checkpointId, session);
 			this.evictParkedSessions();
@@ -1802,6 +1904,7 @@ export class SessionRegistry {
 		);
 
 		await this.persistLastViewedCheckpoint(id, resolution.checkpointId, session);
+		this.persistLoadedSessionStatus(session);
 	}
 
 	/** Switch a specific thread to a different branch by activating a checkpoint.

@@ -1,5 +1,6 @@
 import type { StoredProviderState } from "../stores/dataStore.svelte";
 import type { ProviderInstanceMeta } from "../types/provider/index";
+import type { AssistantState } from "../stores/chatTimeline";
 import type { UUIDv7 } from "../utils/uuid7Validator";
 import type { SmartGraphSettings } from "./graph";
 
@@ -481,6 +482,21 @@ export type ChatOpenLocation = "tab" | "left" | "right";
 
 export type PrivacyMode = "private-by-default" | "public-by-default";
 
+/** Pin/archive flags for a chat session, keyed by its thread file path in `PluginData.sessionFlags`. */
+export interface SessionFlags {
+	pinned?: boolean;
+	pinnedAt?: number;
+	archived?: boolean;
+	/** The session's display name, mirrored from the thread title. Kept here so
+	 * a settled run can name its chat in a notification even when the thread is
+	 * not loaded into a live session. */
+	title?: string;
+	/** Outcome of the thread's last settled turn. The live session knows this
+	 * too, but a parked idle session is evicted, so the sidebar reads this
+	 * rather than showing a known outcome as unknown. */
+	lastStatus?: AssistantState;
+}
+
 export interface PluginData {
 	/** Incremented whenever a breaking schema change is made; drives runMigrations(). Absent on pre-versioning data ⇒ treated as 0. */
 	schemaVersion: number;
@@ -559,6 +575,24 @@ export interface PluginData {
 
 	chatOpenLocation: ChatOpenLocation;
 	lastActiveChatId: UUIDv7 | null;
+	/** Whether the chat session sidebar is enabled. */
+	enableSessionSidebar: boolean;
+	/** Which side of the workspace the session sidebar opens on. */
+	sessionSidebarSide: "left" | "right";
+	/** Sort order for the session manager's session list. */
+	sessionManagerSort: "last-updated" | "created";
+	/** Persisted width (px) of the session sidebar. */
+	sessionSidebarWidth: number;
+	/** Play a short tone when a chat run settles (success or failure). */
+	runSoundEnabled: boolean;
+	/** Raise a notification when a chat run settles (success or failure). */
+	runNotificationEnabled: boolean;
+	/** Absolute path to a sound file played when a run succeeds. Blank uses the built-in tone. */
+	runSuccessSoundPath: string;
+	/** Absolute path to a sound file played when a run fails. Blank uses the built-in tone. */
+	runFailureSoundPath: string;
+	/** Pin/archive flags per chat session, keyed by thread file path. */
+	sessionFlags: Record<string, SessionFlags>;
 	/** Whether the user has completed (or dismissed) the first-run onboarding flow. */
 	onboardingComplete: boolean;
 	/** Whether the onboarding splash intro animation has already played (so it plays only once). */
