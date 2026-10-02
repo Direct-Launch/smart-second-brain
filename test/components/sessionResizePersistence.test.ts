@@ -70,6 +70,51 @@ describe("sessionResizer persistence", () => {
 		expect(d.commits.length).toBe(1);
 	});
 
+	it("accumulates repeated arrow presses within the debounce window", () => {
+		vi.useFakeTimers();
+		const d = mount();
+		for (let i = 0; i < 3; i++) {
+			d.node.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft" }));
+			vi.advanceTimersByTime(20); // faster than the commit debounce
+		}
+		// ArrowLeft widens a right-docked sidebar: three 16px steps from 240 add
+		// up to 256, 272, 288 — under the old `getWidth()` read they would all
+		// have been 256, because each press restarted from the saved width.
+		expect(d.previews).toEqual([256, 272, 288]);
+		vi.advanceTimersByTime(500);
+		vi.useRealTimers();
+		expect(d.commits).toEqual([288]);
+	});
+
+	it("resizes in the new direction after the sidebar side flips", () => {
+		vi.useFakeTimers();
+		let width = 240;
+		const commits: number[] = [];
+		const opts = {
+			getWidth: () => width,
+			previewWidth: (w: number) => {
+				width = w;
+			},
+			commitWidth: (w: number) => {
+				commits.push(w);
+			},
+			getContainerWidth: () => 1200,
+			side: "right" as SidebarSide,
+		};
+		const node = document.createElement("div");
+		const action = sessionResizer(node, opts);
+		// Right-docked: ArrowRight shrinks (240 -> 224).
+		node.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+		vi.advanceTimersByTime(500);
+		expect(width).toBe(224);
+		// The user flips the sidebar to the left without the view remounting.
+		action.update({ ...opts, side: "left" });
+		node.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight" }));
+		vi.advanceTimersByTime(500);
+		expect(width).toBe(240); // left-docked ArrowRight now grows
+		vi.useRealTimers();
+	});
+
 	it("commits the final width, so the size survives a reload", () => {
 		// Guards the opposite failure: silencing the write while losing the value.
 		const d = mount();

@@ -24,7 +24,7 @@ for slot in "${SLOTS[@]}"; do
   worktree="$AGENTS_DIR/$slot"
   vault_name="S2B ${slot/wt/WT}"
   vault_dir="$AGENTS_DIR/$vault_name"
-  build_dir="$worktree/build/prod"
+  build_dir="$worktree/build/smart-second-brain"
 
   echo "=== Slot $slot ==="
 

@@ -34,7 +34,12 @@ let containerWidth = $state(0);
  * on-screen size follows the pointer while the *persisted* value
  * (`data.sessionSidebarWidth`) is written once, on release. */
 let dragWidth = $state<number | null>(null);
-const wide = $derived(data.enableSessionSidebar && containerWidth >= 600);
+// The docked sidebar reserves a fixed column (`CHAT_RESERVED`, 325px), so it
+// only earns its place once the leaf leaves the chat pane real room. On the
+// mobile shell the chat root is positioned across the whole view, so a docked
+// column would overlap it and the composer would be measured against the wrong
+// box; mobile therefore keeps the sheet at every width.
+const wide = $derived(data.enableSessionSidebar && !isMobileUI() && containerWidth >= 600);
 
 function observeWidth(node: HTMLElement) {
 	rootEl = node;

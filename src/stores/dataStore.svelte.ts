@@ -363,7 +363,33 @@ export class PluginDataStore {
 	 * must not be told a write succeeded when it did not — those call
 	 * `saveSettingsOrThrow` and let the failure reach their own caller.
 	 */
+	/**	When true, `saveSettings` is a no-op and `saveSettingsOrThrow` records that a
+	 * write was requested. A caller that mutates many settings in a loop (e.g. the
+	 * session sidebar mirroring every thread title on first load) wraps the loop in
+	 * `bufferSettingsWrites` / `flushSettingsWrites` so the whole batch costs one
+	 * whole-file write instead of one per item. */
+	#settingsWriteDepth = 0;
+	#settingsSavePending = false;
+	/** Batch settings mutations into a single persisted write. Nestable — a batch
+	 * opened inside another only writes when the outermost one flushes. */
+	bufferSettingsWrites(): void {
+		this.#settingsWriteDepth++;
+	}
+	/** Close a `bufferSettingsWrites` batch. Writes only when the outermost batch
+	 * closes and something actually changed during it. */
+	flushSettingsWrites(): void {
+		if (this.#settingsWriteDepth > 0) this.#settingsWriteDepth--;
+		if (this.#settingsWriteDepth === 0 && this.#settingsSavePending) {
+			this.#settingsSavePending = false;
+			void this.saveSettings();
+		}
+	}
+
 	private async saveSettings(): Promise<void> {
+		if (this.#settingsWriteDepth > 0) {
+			this.#settingsSavePending = true;
+			return;
+		}
 		try {
 			await this.saveSettingsOrThrow();
 		} catch (error) {
@@ -374,6 +400,10 @@ export class PluginDataStore {
 
 	/** Persist and propagate failure, for callers that must observe a failed write. */
 	private async saveSettingsOrThrow(): Promise<void> {
+		if (this.#settingsWriteDepth > 0) {
+			this.#settingsSavePending = true;
+			return;
+		}
 		const snap = $state.snapshot(this.#data);
 		await this._plugin.saveData(snap);
 	}

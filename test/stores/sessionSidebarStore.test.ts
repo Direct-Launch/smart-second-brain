@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("obsidian", () => import("../__mocks__/obsidian"));
 
 const getAllThreads = vi.fn();
-const flags = { getSessionFlags: vi.fn(() => ({})), setSessionTitle: vi.fn() };
+const flags = {
+	getSessionFlags: vi.fn(() => ({})),
+	setSessionTitle: vi.fn(),
+	bufferSettingsWrites: vi.fn(),
+	flushSettingsWrites: vi.fn(),
+};
 vi.mock("../../src/stores/state.svelte", () => ({
 	getPlugin: () => ({ agentManager: { getAllThreads } }),
 }));
@@ -30,6 +35,17 @@ describe("SessionSidebarStore", () => {
 		await getSessionSidebarStore().refresh();
 		expect(flags.setSessionTitle).toHaveBeenCalledWith("a.chat", "Holiday plans");
 		expect(flags.setSessionTitle).toHaveBeenCalledWith("b.chat", "Invoices");
+	});
+
+	it("batches the startup title mirror into a single settings write", async () => {
+		getAllThreads.mockResolvedValue([
+			{ threadId: "a.chat", title: "A", createdAt: 1, updatedAt: 2 },
+			{ threadId: "b.chat", title: "B", createdAt: 1, updatedAt: 3 },
+		]);
+		await getSessionSidebarStore().refresh();
+		// One buffer/flush pair around the whole loop, not a save per chat.
+		expect(flags.bufferSettingsWrites).toHaveBeenCalledTimes(1);
+		expect(flags.flushSettingsWrites).toHaveBeenCalledTimes(1);
 	});
 
 	it("registers a delete+rename+create listener on init", () => {

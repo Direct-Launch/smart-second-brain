@@ -65,6 +65,12 @@ export function sessionResizer(node: HTMLElement, opts: SessionResizerOptions) {
 		opts.commitWidth(w);
 	};
 
+	/** The width a gesture should start from: the unsettled preview if one is
+	 * pending, else the saved width. Reading this (rather than `getWidth` alone)
+	 * is what makes repeated arrow presses accumulate — otherwise each press
+	 * restarts from the saved value and a held key never gets past one step. */
+	const current = () => pending ?? opts.getWidth();
+
 	/** Preview immediately; mark the width as needing a commit. */
 	const apply = (w: number) => {
 		opts.previewWidth(w);
@@ -124,9 +130,9 @@ export function sessionResizer(node: HTMLElement, opts: SessionResizerOptions) {
 		const step = 16;
 		const dir = opts.side === "left" ? 1 : -1;
 		if (e.key === "ArrowLeft") {
-			apply(clampSidebarWidth(opts.getWidth() - step * dir, opts.getContainerWidth(), opts.side));
+			apply(clampSidebarWidth(current() - step * dir, opts.getContainerWidth(), opts.side));
 		} else if (e.key === "ArrowRight") {
-			apply(clampSidebarWidth(opts.getWidth() + step * dir, opts.getContainerWidth(), opts.side));
+			apply(clampSidebarWidth(current() + step * dir, opts.getContainerWidth(), opts.side));
 		} else {
 			return;
 		}
@@ -139,6 +145,13 @@ export function sessionResizer(node: HTMLElement, opts: SessionResizerOptions) {
 	node.addEventListener("keydown", onKey);
 
 	return {
+		/** Svelte re-runs this when the action's parameters change, e.g. the user
+		 * flips the sidebar to the other side while the chat stays open. Without it
+		 * `opts.side` keeps the value captured at mount, so the next drag or arrow
+		 * press resizes in the old direction until the view remounts. */
+		update(next: SessionResizerOptions) {
+			opts = next;
+		},
 		destroy() {
 			node.removeEventListener("pointerdown", onDown);
 			node.removeEventListener("keydown", onKey);

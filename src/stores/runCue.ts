@@ -29,8 +29,10 @@ export interface RunCue {
 	sound: CueSound | null;
 	/** Notification body, or null for no notification. */
 	body: string | null;
-	/** Display title for the notification — the session name, so a cue can say
-	 * *which* chat settled. Null when the session has no name yet. */
+	/** Name of the session that settled, so the in-app cue can say *which* chat
+	 * it was. Never used as the OS notification's title, which stays generic so a
+	 * chat name cannot surface outside the vault. Null when the session has no
+	 * name yet. */
 	name: string | null;
 }
 
@@ -95,9 +97,27 @@ export function outcomeForAssistantState(state: AssistantState | undefined): Run
 
 let audioCtx: AudioContext | null = null;
 
+/** Read a file's modification time, or null when it cannot be stat'd (a missing
+ * file, or no filesystem at all). The decode cache compares this so a sound the
+ * user replaces at the same path during a session is re-read, not replayed from
+ * the stale buffer. */
+function fileMtime(path: string): number | null {
+	try {
+		const scope = globalThis as { require?: (id: string) => unknown };
+		const req = scope.require ?? (window as unknown as { require?: (id: string) => unknown }).require;
+		if (typeof req !== "function") return null;
+		const fs = req("fs") as { statSync?: (p: string) => { mtimeMs?: number } };
+		const mtime = fs?.statSync?.(path)?.mtimeMs;
+		return typeof mtime === "number" ? mtime : null;
+	} catch {
+		return null;
+	}
+}
+
 /** Decoded audio, keyed by file path, so a settle does not re-read and
- * re-decode the same file from disk on every run. */
-const decodedSounds = new Map<string, AudioBuffer>();
+ * re-decode the same file from disk on every run. The entry records the file's
+ * mtime at decode time; playFile invalidates it when the file has changed. */
+const decodedSounds = new Map<string, { buffer: AudioBuffer; mtime: number | null }>();
 /** Decodes already in flight, keyed the same way, so two settles in quick
  * succession do not both hit the disk for the same file. */
 const pendingDecodes = new Map<string, Promise<AudioBuffer | null>>();
@@ -173,7 +193,7 @@ async function decodeSound(path: string): Promise<AudioBuffer | null> {
 		const bytes = readFileBytes(path);
 		if (!bytes) return null;
 		const decoded = await audioCtx.decodeAudioData(bytes);
-		decodedSounds.set(path, decoded);
+		decodedSounds.set(path, { buffer: decoded, mtime: fileMtime(path) });
 		return decoded;
 	} catch {
 		return null;
@@ -189,10 +209,17 @@ async function decodeSound(path: string): Promise<AudioBuffer | null> {
  */
 function playFile(path: string, fallbackHz: number): void {
 	try {
+		const mtime = fileMtime(path);
 		const cached = decodedSounds.get(path);
 		if (cached) {
-			playBuffer(cached);
-			return;
+			// A file replaced at the same path keeps its key, so compare mtimes: the
+			// decoded buffer is only valid while the file is unchanged. A null mtime
+			// means the file is gone or unreadable, so the cache is stale either way.
+			if (mtime !== null && cached.mtime === mtime) {
+				playBuffer(cached.buffer);
+				return;
+			}
+			decodedSounds.delete(path);
 		}
 		if (!audioCtx || audioCtx.state !== "running") return;
 		let pending = pendingDecodes.get(path);
@@ -212,9 +239,11 @@ function playFile(path: string, fallbackHz: number): void {
 function notify(body: string, name: string | null): void {
 	try {
 		if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-			// The session name is the OS notification's title; the outcome is
-			// its body. Falls back to the plugin name for an unnamed session.
-			new Notification(name ?? "Smart Second Brain", { body });
+			// Deliberately generic: an OS notification is shown outside the vault,
+			// and a chat title often summarises its opening message, so carrying
+			// the name here would put a private topic on the lock screen. The name
+			// still rides the in-app Notice below, where it is already on screen.
+			new Notification("Smart Second Brain", { body });
 			return;
 		}
 		// Notice is the guaranteed floor, and is not gated by permission. It
