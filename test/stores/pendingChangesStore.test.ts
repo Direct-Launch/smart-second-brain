@@ -1326,4 +1326,69 @@ describe("PendingChangesStore", () => {
 			expect(store.revision).toBe(before);
 		});
 	});
+
+	/* --------------------------------------------------------------------------
+	 * Payload retention
+	 * ------------------------------------------------------------------------*/
+
+	describe("payload pruning of settled entries", () => {
+		const mkEntry = (
+			id: string,
+			status: "pending" | "accepted" | "rejected",
+			opts: { reported?: boolean; initial?: string } = {},
+		) => ({
+			id,
+			change: {
+				type: "update" as const,
+				path: "note.md",
+				originalContent: "x".repeat(64),
+				newContent: "y".repeat(64),
+				...(opts.initial !== undefined ? { initialOriginalContent: opts.initial } : {}),
+			},
+			status,
+			toolCallId: "tc",
+			threadId: "thread-1",
+			createdAt: 1,
+			...(opts.reported !== undefined ? { reportedToModel: opts.reported } : {}),
+		});
+
+		async function loadWith(entries: unknown[]) {
+			vi.mocked(plugin.app.vault.adapter.exists).mockResolvedValue(true);
+			vi.mocked(plugin.app.vault.adapter.read).mockResolvedValue(JSON.stringify(entries));
+			await store.load();
+		}
+
+		it("drops settled entries once the model has seen the outcome", async () => {
+			await loadWith([
+				mkEntry("01a00000-0000-7000-8000-000000000001", "pending"),
+				mkEntry("01a00000-0000-7000-8000-000000000002", "accepted", { reported: true }),
+				mkEntry("01a00000-0000-7000-8000-000000000003", "rejected", { reported: true }),
+			]);
+
+			expect(store.getEntriesForThread("thread-1").map((e) => e.id)).toEqual([
+				"01a00000-0000-7000-8000-000000000001",
+			]);
+		});
+
+		it("keeps a settled entry whose outcome has not reached the model yet", async () => {
+			// The next turn still has to be told this proposal was resolved, and
+			// `takeReviewOutcomesForThread` only skips entries already reported.
+			await loadWith([mkEntry("01a00000-0000-7000-8000-000000000004", "accepted")]);
+
+			expect(store.getEntriesForThread("thread-1")).toHaveLength(1);
+		});
+
+		it("keeps a settled entry holding an unreverted partial application", async () => {
+			// `initialOriginalContent` means applied text the user has not signed
+			// off on — the payload is the only undo record, so it must survive.
+			await loadWith([
+				mkEntry("01a00000-0000-7000-8000-000000000005", "accepted", {
+					reported: true,
+					initial: "x".repeat(64),
+				}),
+			]);
+
+			expect(store.getEntriesForThread("thread-1")).toHaveLength(1);
+		});
+	});
 });

@@ -166,6 +166,7 @@ export class PendingChangesStore {
 		}
 		this.#backfillShortIds();
 		await this.#pruneOrphanedThreads();
+		this.#pruneResolvedEntries();
 		this.#renameHandler = this.#plugin.app.vault.on("rename", (file, oldPath) => {
 			this.#handleFileRename(oldPath, file.path);
 		});
@@ -263,8 +264,35 @@ export class PendingChangesStore {
 		if (!(await this.#plugin.app.vault.adapter.exists(dir))) {
 			await this.#plugin.app.vault.adapter.mkdir(dir);
 		}
+		this.#pruneResolvedEntries();
 		const snapshot = $state.snapshot(this.#entries);
 		await this.#plugin.app.vault.adapter.write(path, JSON.stringify(snapshot, null, 2));
+	}
+
+	/**
+	 * Drop the stored payload of entries that can never be needed again.
+	 *
+	 * A resolved entry keeps the full `originalContent` / `newContent` text of the
+	 * note it touched, and nothing ever dropped it — so the store grew with every
+	 * proposal ever made and was re-parsed and re-written whole on load and after
+	 * each change. An entry is only prunable once the outcome is settled *and* the
+	 * model has been told about it (an unreported outcome still has to reach the
+	 * next turn, and `takeReviewOutcomesForThread` skips `reportedToModel` ones).
+	 *
+	 * `hasUnrevertedApplication` is the safety gate rather than `status`: a
+	 * partially-accepted entry keeps `originalContent`/`newContent` live so
+	 * `revertAppliedGroups` can restore the note. Both places that settle that
+	 * snapshot clear it — the full accept and the revert — so this cannot race a
+	 * revert in flight.
+	 */
+	#pruneResolvedEntries(): void {
+		const kept = this.#entries.filter(
+			(e) => e.status === "pending" || !e.reportedToModel || this.hasUnrevertedApplication(e),
+		);
+		if (kept.length === this.#entries.length) return;
+		const removed = this.#entries.length - kept.length;
+		this.#entries = kept;
+		Logger.log(`[PendingChanges] Pruned ${removed} resolved ${removed === 1 ? "entry" : "entries"} from the store.`);
 	}
 
 	/** Reactive revision counter – read this inside `$derived` to track store mutations. */
