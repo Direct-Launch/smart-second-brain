@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AssistantState } from "../../src/stores/chatTimeline";
-import {
-	deriveRowStatus,
-	deriveSessionStatus,
-	SESSION_STATUS_DISPLAY,
-} from "../../src/stores/session-sidebar/status";
+import { deriveRowStatus, deriveSessionStatus, SESSION_STATUS_DISPLAY } from "../../src/stores/session-sidebar/status";
 
 describe("deriveSessionStatus", () => {
 	it("reports running whenever the session is live, whatever the last message says", () => {

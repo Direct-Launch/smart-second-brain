@@ -55,17 +55,11 @@ function checkpoint(
 
 /** A settled turn: one human message and its assistant reply. */
 function settledTurn(): unknown[] {
-	return [
-		new HumanMessage({ content: "hello", id: "h1" }),
-		new AIMessage({ content: "hi", id: "ai1" }),
-	];
+	return [new HumanMessage({ content: "hello", id: "h1" }), new AIMessage({ content: "hi", id: "ai1" })];
 }
 
 function makeRegistry(messages: unknown[], errorCount = 0): SessionRegistry {
-	const history = [
-		checkpoint("r", -1, []),
-		checkpoint("b", 0, messages, "r"),
-	];
+	const history = [checkpoint("r", -1, []), checkpoint("b", 0, messages, "r")];
 	const stub = {
 		isThreadEmpty: async () => false,
 		getThreadHistory: async () => ({ messages, metadata: {}, errorCount }),

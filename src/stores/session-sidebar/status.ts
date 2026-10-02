@@ -36,10 +36,7 @@ export const SESSION_STATUS_DISPLAY: Record<SessionStatus, SessionStatusDisplay>
  * stays in that state forever, but nothing is actually happening. It is neither
  * done nor failed, so it reports `interrupted` rather than inventing an outcome.
  */
-export function deriveSessionStatus(
-	isRunning: boolean,
-	lastAssistantState: AssistantState | undefined,
-): SessionStatus {
+export function deriveSessionStatus(isRunning: boolean, lastAssistantState: AssistantState | undefined): SessionStatus {
 	if (isRunning) return "running";
 	switch (lastAssistantState) {
 		case AssistantState.success:

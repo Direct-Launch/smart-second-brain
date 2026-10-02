@@ -15,8 +15,7 @@ interface Props {
 	onTogglePin: () => void;
 	onToggleArchive: () => void;
 }
-const { row, active, status, archivedView, onOpen, onRename, onDelete, onTogglePin, onToggleArchive }: Props =
-	$props();
+const { row, active, status, archivedView, onOpen, onRename, onDelete, onTogglePin, onToggleArchive }: Props = $props();
 
 /** running stays the single flag the row actions gate on; it is derived from the
  * one status value rather than passed separately, so the indicator and the

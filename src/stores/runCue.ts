@@ -53,11 +53,7 @@ function trimmedOrNull(value: string | undefined): string | null {
  * would be noise rather than information. Pure, so the decision is testable
  * without an AudioContext or a renderer.
  */
-export function cueForOutcome(
-	outcome: RunOutcome,
-	settings: RunCueSettings,
-	sessionName?: string,
-): RunCue {
+export function cueForOutcome(outcome: RunOutcome, settings: RunCueSettings, sessionName?: string): RunCue {
 	// The session name rides alongside the body rather than inside it: several
 	// chats can be in flight, so "Chat run finished" on its own does not tell
 	// the user which one it was.
@@ -148,8 +144,7 @@ function playTone(frequency: number): void {
 function readFileBytes(path: string): ArrayBuffer | null {
 	try {
 		const scope = globalThis as { require?: (id: string) => unknown };
-		const req =
-			scope.require ?? (window as unknown as { require?: (id: string) => unknown }).require;
+		const req = scope.require ?? (window as unknown as { require?: (id: string) => unknown }).require;
 		if (typeof req !== "function") return null;
 		const fs = req("fs") as { readFileSync?: (p: string) => Uint8Array };
 		if (typeof fs?.readFileSync !== "function") return null;
@@ -238,11 +233,7 @@ function notify(body: string, name: string | null): void {
  * (headless, or the unit tests for this path). A cue must never be able to break
  * the bookkeeping of a run that has already settled.
  */
-export function emitRunCue(
-	outcome: RunOutcome | null,
-	readSettings: () => RunCueSettings,
-	sessionName?: string,
-): void {
+export function emitRunCue(outcome: RunOutcome | null, readSettings: () => RunCueSettings, sessionName?: string): void {
 	if (!outcome) return;
 	let settings: RunCueSettings;
 	try {

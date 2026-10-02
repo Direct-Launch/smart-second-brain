@@ -12,7 +12,11 @@ export interface SessionRow {
 	pinnedAt: number;
 	archived: boolean;
 }
-export interface SessionSections { pinned: SessionRow[]; active: SessionRow[]; archived: SessionRow[] }
+export interface SessionSections {
+	pinned: SessionRow[];
+	active: SessionRow[];
+	archived: SessionRow[];
+}
 
 export function toRows(snapshots: ThreadSnapshot[], flagsFor: (id: string) => SessionFlags): SessionRow[] {
 	return snapshots.map((s) => {

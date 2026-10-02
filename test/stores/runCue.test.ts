@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AssistantState } from "../../src/stores/chatTimeline";
-import {
-	CUE_DONE_HZ,
-	CUE_FAIL_HZ,
-	cueForOutcome,
-	outcomeForAssistantState,
-} from "../../src/stores/runCue";
+import { CUE_DONE_HZ, CUE_FAIL_HZ, cueForOutcome, outcomeForAssistantState } from "../../src/stores/runCue";
 
 describe("cueForOutcome", () => {
 	const on = { sound: true, notification: true };
