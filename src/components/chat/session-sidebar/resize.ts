@@ -41,7 +41,11 @@ interface SessionResizerOptions {
  * The pointer is captured on the divider for the duration of a drag, so a release
  * that lands outside the strip still ends the gesture rather than leaving it
  * stuck to the cursor. */
-export function sessionResizer(node: HTMLElement, opts: SessionResizerOptions) {
+export function sessionResizer(node: HTMLElement, initialOpts: SessionResizerOptions) {
+	// Held in a local rather than reassigning the parameter, so the action's
+	// `update` can swap in new options (e.g. a flipped sidebar side) without
+	// tripping the reassigning-a-function-parameter lint rule.
+	let opts = initialOpts;
 	let startX = 0;
 	let startW = 0;
 	let dragging = false;
