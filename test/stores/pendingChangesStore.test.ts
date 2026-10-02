@@ -1349,6 +1349,7 @@ describe("PendingChangesStore", () => {
 			toolCallId: "tc",
 			threadId: "thread-1",
 			createdAt: 1,
+			shortId: "s",
 			...(opts.reported !== undefined ? { reportedToModel: opts.reported } : {}),
 		});
 
@@ -1358,24 +1359,37 @@ describe("PendingChangesStore", () => {
 			await store.load();
 		}
 
-		it("drops settled entries once the model has seen the outcome", async () => {
+		it("drops the note text of a settled entry, keeping the row and its status", async () => {
 			await loadWith([
 				mkEntry("01a00000-0000-7000-8000-000000000001", "pending"),
 				mkEntry("01a00000-0000-7000-8000-000000000002", "accepted", { reported: true }),
 				mkEntry("01a00000-0000-7000-8000-000000000003", "rejected", { reported: true }),
 			]);
 
+			// Rows survive — the chat card reads them for its review chips.
 			expect(store.getEntriesForThread("thread-1").map((e) => e.id)).toEqual([
 				"01a00000-0000-7000-8000-000000000001",
+				"01a00000-0000-7000-8000-000000000002",
+				"01a00000-0000-7000-8000-000000000003",
 			]);
+
+			const pending = store.getEntry("01a00000-0000-7000-8000-000000000001");
+			expect(pending?.change.type === "update" && pending.change.originalContent).toBe("x".repeat(64));
+
+			const accepted = store.getEntry("01a00000-0000-7000-8000-000000000002");
+			expect(accepted?.status).toBe("accepted");
+			expect(accepted?.change.type === "update" && accepted.change.originalContent).toBe("");
+			expect(accepted?.change.type === "update" && accepted.change.newContent).toBe("");
 		});
 
-		it("keeps a settled entry whose outcome has not reached the model yet", async () => {
+		it("keeps a settled entry's text until the outcome has reached the model", async () => {
 			// The next turn still has to be told this proposal was resolved, and
 			// `takeReviewOutcomesForThread` only skips entries already reported.
 			await loadWith([mkEntry("01a00000-0000-7000-8000-000000000004", "accepted")]);
 
-			expect(store.getEntriesForThread("thread-1")).toHaveLength(1);
+			const entry = store.getEntry("01a00000-0000-7000-8000-000000000004");
+			expect(entry?.change.type === "update" && entry.change.originalContent).toBe("x".repeat(64));
+			expect(plugin.app.vault.adapter.write).not.toHaveBeenCalled();
 		});
 
 		it("keeps a settled entry holding an unreverted partial application", async () => {
@@ -1388,7 +1402,20 @@ describe("PendingChangesStore", () => {
 				}),
 			]);
 
-			expect(store.getEntriesForThread("thread-1")).toHaveLength(1);
+			const entry = store.getEntry("01a00000-0000-7000-8000-000000000005");
+			expect(entry?.change.type === "update" && entry.change.originalContent).toBe("x".repeat(64));
+			expect(plugin.app.vault.adapter.write).not.toHaveBeenCalled();
+		});
+
+		it("persists the load-time prune so idle restarts stop re-reading the old file", async () => {
+			await loadWith([mkEntry("01a00000-0000-7000-8000-000000000006", "accepted", { reported: true })]);
+
+			// Nothing else in `load()` writes for this fixture (short ids already
+			// present, no `.chat` thread to sweep), so a write here is the prune
+			// persisting itself — without it every restart pays the full cost again.
+			expect(plugin.app.vault.adapter.write).toHaveBeenCalled();
+			const last = vi.mocked(plugin.app.vault.adapter.write).mock.calls.at(-1)!;
+			expect(last[1]).not.toContain("x".repeat(64));
 		});
 	});
 });
